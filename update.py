@@ -93,7 +93,11 @@ def send_telegram(text):
 def find_chat_id():
     """沒設 TELEGRAM_CHAT_ID 時，從最近傳給機器人的訊息找出你的 chat id 並印出來。"""
     token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
-    if not token or os.environ.get("TELEGRAM_CHAT_ID"):
+    if not token or os.environ.get("TELEGRAM_CHAT_ID", "").strip():
+        return
+    saved = os.path.join(ROOT, "data", "chat_id")
+    if os.path.exists(saved):
+        os.environ["TELEGRAM_CHAT_ID"] = open(saved).read().strip()
         return
     try:
         with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getUpdates", timeout=20) as r:
@@ -101,7 +105,9 @@ def find_chat_id():
                 msg = u.get("message") or {}
                 if msg.get("chat"):
                     os.environ["TELEGRAM_CHAT_ID"] = str(msg["chat"]["id"])
-                    print("找到 chat id:", msg["chat"]["id"])
+                    with open(saved, "w") as f:
+                        f.write(str(msg["chat"]["id"]))
+                    print("找到 chat id")
     except Exception as e:
         print("getUpdates error:", e, file=sys.stderr)
 
@@ -175,7 +181,7 @@ def main():
     find_chat_id()
     page = os.environ.get("PAGE_URL", "")
     marker = os.path.join(ROOT, "data", "telegram_started")
-    if os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID") and not os.path.exists(marker):
+    if os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() and os.environ.get("TELEGRAM_CHAT_ID", "").strip() and not os.path.exists(marker):
         open(marker, "w").close()
         send_telegram("✅ 財經新聞小幫手已啟動！之後有重大消息會第一時間通知你。" + (f"\n每日整理：{page}" if page else ""))
     for it in sorted(new_alerts, key=lambda x: x["time"])[-cfg.get("max_alerts_per_run", 8):]:
