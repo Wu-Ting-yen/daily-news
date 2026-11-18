@@ -111,7 +111,7 @@ def render(cfg, store, updated):
     for it in sorted(store.values(), key=lambda x: x["time"], reverse=True):
         if it["section"] in by_sec and len(by_sec[it["section"]]) < cfg["max_items_per_section"]:
             by_sec[it["section"]].append(it)
-    alerts = sorted([i for i in store.values() if i.get("alert")], key=lambda x: x["time"], reverse=True)[:15]
+    alerts = sorted([i for i in store.values() if i.get("alert_main")], key=lambda x: x["time"], reverse=True)[:15]
 
     def card(it):
         t = datetime.fromisoformat(it["time"]).strftime("%m/%d %H:%M")
@@ -140,7 +140,8 @@ def main():
     first_run = not store
     now = datetime.now(TPE)
     cutoff = now - timedelta(days=cfg.get("keep_days", 3))
-    seen_titles = {norm(i["title"]) for i in store.values()}
+    seen_titles = {(i["section"], norm(i["title"])) for i in store.values()}
+    alerted = {norm(i["title"]) for i in store.values() if i.get("alert")}
     kws = [k.lower() for k in cfg.get("alert_keywords", [])]
     new_alerts = []
 
@@ -151,17 +152,21 @@ def main():
             print(f"[{sec['id']}] 抓取失敗: {e}", file=sys.stderr)
             continue
         for it in items:
-            if datetime.fromisoformat(it["time"]) < cutoff or it["id"] in store:
+            key = sec["id"] + "|" + it["id"]
+            if datetime.fromisoformat(it["time"]) < cutoff or key in store:
                 continue
             nt = norm(it["title"])
-            if nt in seen_titles:  # 同一則新聞不同媒體，只留一則
+            if (sec["id"], nt) in seen_titles:  # 同一區塊內相同新聞只留一則
                 continue
-            seen_titles.add(nt)
+            seen_titles.add((sec["id"], nt))
             if any(k in it["title"].lower() for k in kws):
                 it["alert"] = True
-                if not first_run and datetime.fromisoformat(it["time"]) > now - timedelta(hours=6):
-                    new_alerts.append(it)
-            store[it["id"]] = it
+                if nt not in alerted:  # 同一則快訊只推播一次、重大快訊區只列一次
+                    alerted.add(nt)
+                    it["alert_main"] = True
+                    if not first_run and datetime.fromisoformat(it["time"]) > now - timedelta(hours=6):
+                        new_alerts.append(it)
+            store[key] = it
 
     store = {k: v for k, v in store.items() if datetime.fromisoformat(v["time"]) >= cutoff}
     save("data/news.json", store)
