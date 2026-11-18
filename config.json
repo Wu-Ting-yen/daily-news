@@ -1,0 +1,22 @@
+{
+  "_說明": "想追蹤新主題：在 sections 加一個 query；想改通知關鍵字：改 alert_keywords。",
+  "keep_days": 3,
+  "max_items_per_section": 25,
+  "sections": [
+    {"id": "top",      "name": "今日頭條",       "url": "https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+    {"id": "business", "name": "財經",           "url": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+    {"id": "tech",     "name": "科技",           "url": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+    {"id": "world",    "name": "國際",           "url": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+    {"id": "ipo",      "name": "IPO 上市・定價",  "query": "IPO 定價 OR 上市 掛牌 OR 承銷價 when:2d"},
+    {"id": "bigco",    "name": "大公司動態",      "query": "台積電 OR 輝達 OR 蘋果 OR 特斯拉 OR 微軟 OR 鴻海 OR OpenAI when:1d"},
+    {"id": "space",    "name": "太空・發射",      "query": "SpaceX OR 火箭發射 OR 太空 發射 OR 星艦 when:2d"},
+    {"id": "macro",    "name": "央行・利率",      "query": "聯準會 OR 降息 OR 升息 OR 央行 利率 when:1d"}
+  ],
+  "alert_keywords": [
+    "定價", "承銷價", "掛牌", "IPO", "上市首日",
+    "發射", "星艦", "SpaceX",
+    "降息", "升息", "聯準會",
+    "財報", "併購", "收購", "暴跌", "暴漲", "崩盤", "停牌", "破產"
+  ],
+  "max_alerts_per_run": 8
+}
