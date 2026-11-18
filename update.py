@@ -74,8 +74,8 @@ def norm(t):
 
 
 def send_telegram(text):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat = os.environ.get("TELEGRAM_CHAT_ID")
+    token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
     if not token or not chat:
         return False
     data = urllib.parse.urlencode({
@@ -92,7 +92,7 @@ def send_telegram(text):
 
 def find_chat_id():
     """沒設 TELEGRAM_CHAT_ID 時，從最近傳給機器人的訊息找出你的 chat id 並印出來。"""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
     if not token or os.environ.get("TELEGRAM_CHAT_ID"):
         return
     try:
