@@ -174,7 +174,9 @@ def main():
 
     find_chat_id()
     page = os.environ.get("PAGE_URL", "")
-    if first_run and os.environ.get("TELEGRAM_BOT_TOKEN"):
+    marker = os.path.join(ROOT, "data", "telegram_started")
+    if os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID") and not os.path.exists(marker):
+        open(marker, "w").close()
         send_telegram("✅ 財經新聞小幫手已啟動！之後有重大消息會第一時間通知你。" + (f"\n每日整理：{page}" if page else ""))
     for it in sorted(new_alerts, key=lambda x: x["time"])[-cfg.get("max_alerts_per_run", 8):]:
         t = datetime.fromisoformat(it["time"]).strftime("%H:%M")
