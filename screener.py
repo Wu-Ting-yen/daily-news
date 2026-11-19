@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""台股分析（錯殺股篩選）：每天收盤後，把台灣市值前 150 大上市公司（約等於台灣50＋中型100）
+"""台股分析（錯殺股篩選）：每天收盤後，把市值前 150 大上市公司＋前 150 大上櫃公司（共 300 檔）
 分成「可能被錯殺」「基本面轉弱」「其他」，輸出 stocks.html 並用 Telegram 推播重點。
 
 只用 Python 內建套件。資料來源（全部免費）：
@@ -21,7 +21,7 @@ import urllib.request
 ROOT = os.path.dirname(os.path.abspath(__file__))
 TZ = dt.timezone(dt.timedelta(hours=8))
 UA = {"User-Agent": "Mozilla/5.0 (daily-news screener)"}
-UNIVERSE = 150          # 市值前 150 大
+UNIVERSE = 150          # 上市、上櫃各取市值前 150 大
 DROP_LINE = -15.0       # 跌幅門檻（距近三個月高點）
 CACHE_DAYS = 6          # 財報、歷史本益比多久重抓一次
 FINMIND_BUDGET = 290    # 每次最多打幾次 FinMind（免費版每小時 300 次）
@@ -61,19 +61,46 @@ def save(path, obj):
 
 # ───────────────────────── 資料抓取 ─────────────────────────
 
+def pick(d, *keys):
+    """不同 API 欄位名稱不一樣：依序找第一個有的欄位"""
+    for k in keys:
+        if k in d and str(d[k]).strip() not in ("", "-", "--"):
+            return d[k]
+    return None
+
+
 def universe():
+    out = []
+    # 上市
     basic = get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L") or []
     day = get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL") or []
     close = {d["Code"]: num(d["ClosingPrice"]) for d in day}
+    out += top(basic, close, "TW")
+    # 上櫃
+    basic = get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O") or []
+    day = get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes") or []
+    if basic:
+        print("tpex basic keys", list(basic[0].keys())[:20])
+    if day:
+        print("tpex close keys", list(day[0].keys())[:12])
+    close = {str(pick(d, "SecuritiesCompanyCode", "Code", "代號") or "").strip(): num(pick(d, "Close", "ClosingPrice", "收盤"))
+             for d in day}
+    out += top(basic, close, "TWO")
+    return out
+
+
+def top(basic, close, mkt):
     rows = []
     for b in basic:
-        code = b["公司代號"].strip()
+        code = str(pick(b, "公司代號", "SecuritiesCompanyCode") or "").strip()
         if not (len(code) == 4 and code.isdigit()) or code.startswith(("0", "91")):
             continue
-        shares, px = num(b.get("已發行普通股數或TDR原股發行股數")), close.get(code)
+        shares = num(pick(b, "已發行普通股數或TDR原股發行股數", "已發行普通股數或TDR原發行股數", "普通股股數"))
+        px = close.get(code)
         if shares and px:
-            rows.append({"code": code, "name": b["公司簡稱"].strip(), "mcap": shares * px})
+            rows.append({"code": code, "name": str(pick(b, "公司簡稱", "公司名稱") or code).strip(), "mcap": shares * px, "mkt": mkt})
     rows.sort(key=lambda r: -r["mcap"])
+    print("universe", mkt, len(rows), [r["name"] for r in rows[:5]])
     return rows[:UNIVERSE]
 
 
@@ -183,6 +210,45 @@ def institutional(dates):
             t[0] += sum(num(row[i]) or 0 for i in ifor)
             t[1] += num(row[itru]) or 0
     return tot, used
+
+
+def tpex_institutional(dates, tot):
+    """上櫃三大法人買賣超（股），加到 tot；回傳成功的日期"""
+    used = []
+    for d in dates:
+        y, m, dd = d.split("-")
+        rows, fi, ti = None, None, None
+        j = get(f"https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date={y}%2F{m}%2F{dd}&response=json", tries=2)
+        try:
+            t = (j or {}).get("tables") or []
+            if t and t[0].get("data"):
+                f = [str(x) for x in t[0].get("fields") or []]
+                rows = t[0]["data"]
+                # 「外資及陸資合計」或「外資及陸資(不含外資自營商)」＋「外資自營商」的買賣超
+                fi = [i for i, n in enumerate(f) if "外資" in n and "買賣超" in n and "合計" in n] or \
+                     [i for i, n in enumerate(f) if "外資" in n and "買賣超" in n]
+                ti = [i for i, n in enumerate(f) if "投信" in n and "買賣超" in n][:1]
+        except Exception as e:
+            print("tpex insti parse", e, file=sys.stderr)
+        if not rows:
+            roc = f"{int(y) - 1911}/{m}/{dd}"
+            j = get(f"https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&o=json&se=EW&t=D&d={roc}", tries=2)
+            rows = (j or {}).get("aaData") or []
+            fi, ti = [10], [13]   # 舊版固定欄位：外資及陸資合計買賣超、投信買賣超
+        time.sleep(2)
+        if not rows or not fi or not ti:
+            print("tpex insti none", d, file=sys.stderr)
+            continue
+        used.append(d)
+        for row in rows:
+            code = str(row[0]).strip()
+            if len(code) != 4:
+                continue
+            t_ = tot.setdefault(code, [0, 0])
+            t_[0] += num(row[fi[0]]) or 0
+            t_[1] += num(row[ti[0]]) or 0
+    print("tpex inst days", used)
+    return used
 
 
 def taifex_csv(url, form):
@@ -692,7 +758,7 @@ def card(s, i=None):
         badge = f'<span class="gems" title="錯殺指數">{"◆" * n}{"◇" * (3 - n)}</span>'
     rank = f'<span class="no">{i:02d}</span>' if i else ""
     return f'''<article class="card stock {s["cat"]}" data-code="{s["code"]}" data-name="{e(s["name"])}">
-  <a class="head" href="https://tw.stock.yahoo.com/quote/{s["code"]}.TW" target="_blank" rel="noopener">
+  <a class="head" href="https://tw.stock.yahoo.com/quote/{s["code"]}.{s.get("mkt", "TW")}" target="_blank" rel="noopener">
     {rank}<div class="nm"><h3>{e(s["name"])} <em>{s["code"]}</em></h3><div class="ind">{e(s.get("industry", ""))}{flag}</div></div>
     <div class="px"><div class="dd">{s["dd"]:+.1f}<small>%</small></div><div class="p">{s["price"]:,.2f}・距三個月高點</div></div>
   </a>
@@ -873,8 +939,8 @@ def overview(stocks, groups, mkt, opt=None):
                        f'<span>{s["dd"]:+.0f}%</span></a></li>' for s in lst[:5])
     return f'''<section id="overview">
 {options_card(opt, mkt)}
-<div class="card ov"><h2>今天 150 檔的樣子</h2>
-<p class="note2">加權指數距三個月高點 {mkt["dd"]:+.1f}%。150 檔裡，各類別各有幾檔：</p>
+<div class="card ov"><h2>今天 {len(stocks)} 檔的樣子</h2>
+<p class="note2">加權指數距三個月高點 {mkt["dd"]:+.1f}%。{len(stocks)} 檔裡，各類別各有幾檔：</p>
 <div class="seg">{seg}</div><div class="legend">{legend}</div></div>
 <div class="card ov"><h2>錯殺地圖</h2>
 <p class="note2">每個點是一檔股票。越往左跌越多，越往上基本面越好。<b>左上角</b>＝跌很多、公司卻還在成長，最可能是錯殺；<b>左下角</b>＝跌有理由。點一下圓點看是哪一檔。</p>
@@ -884,7 +950,7 @@ def overview(stocks, groups, mkt, opt=None):
 <div class="card ov"><h2>轉弱前五名</h2><ol class="mini weak">{mini(groups["weak"], "weak")}</ol></div>
 </div>
 <div class="card ov"><h2>各產業跌多少</h2>
-<p class="note2">只列 150 檔裡至少有 2 檔的產業，跌最多的在上面。同一個產業如果「錯殺」多、「轉弱」少，代表是整個族群被一起賣，不是基本面出問題。</p>
+<p class="note2">只列追蹤的股票裡至少有 2 檔的產業，跌最多的在上面。同一個產業如果「錯殺」多、「轉弱」少，代表是整個族群被一起賣，不是基本面出問題。</p>
 {table}</div>
 </section>'''
 
@@ -912,7 +978,7 @@ def signals_html(sig):
 
 HOW = '''<section id="how"><div class="card how">
 <h2>這個頁面在做什麼</h2>
-<p>大盤急跌時，好公司和壞公司常常一起被賣。這裡每天收盤後，把<b>市值前 150 大的上市公司</b>（大約就是台灣 50 加中型 100）逐一檢查，看股價跌了多少、公司本身有沒有變差，分成三類。</p>
+<p>大盤急跌時，好公司和壞公司常常一起被賣。這裡每天收盤後，把<b>市值前 150 大的上市公司</b>（大約就是台灣 50 加中型 100）和<b>市值前 150 大的上櫃公司</b>，共 300 檔逐一檢查，看股價跌了多少、公司本身有沒有變差，分成三類。</p>
 <h2>看哪些東西</h2>
 <ol>
 <li><b>跌幅</b>：現在股價距離近三個月最高點跌了多少。跌超過 {{DROP}}% 才算「跌很多」。</li>
@@ -1092,12 +1158,19 @@ def main():
     last_date = idx[-1][0]
 
     rev = {r["公司代號"].strip(): r for r in (get("https://openapi.twse.com.tw/v1/opendata/t187ap05_L") or [])}
+    rev_o = get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O") or []
+    if rev_o:
+        print("tpex revenue keys", list(rev_o[0].keys())[:20])
+    for r in rev_o:
+        if r.get("公司代號"):
+            rev.setdefault(str(r["公司代號"]).strip(), r)
 
     cache = load("data/stock_cache.json", {})
     cache = refresh_cache([u["code"] for u in uni], cache, FinMind(), today)
     save("data/stock_cache.json", cache)
 
     inst, inst_days = institutional([d for d, _ in idx[-5:]])
+    tpex_institutional([d for d, _ in idx[-5:]], inst)
     print("inst days", inst_days)
 
     name2code = {u["name"]: u["code"] for u in uni}
@@ -1112,13 +1185,13 @@ def main():
     print("warrant underlyings", len(war))
 
     # 補算：還沒有收盤紀錄的前幾個交易日，用當天以前的股價重新分類（基本面、估值資料相同）
-    have = set(history_days())
-    back = [d for d, _ in idx[-11:] if d < last_date and d not in have]
-    backfill = {d: {"_bf": 1} for d in back}
+    back = [d for d, _ in idx[-11:] if d < last_date]
+    backfill = {d: load(f"data/history/{d}.json", {"_bf": 1}) for d in back}
+    n_before = {d: len(v) for d, v in backfill.items()}
 
     stocks = []
     for u in uni:
-        h, hlv = yahoo(u["code"] + ".TW", full=True)
+        h, hlv = yahoo(u["code"] + "." + u.get("mkt", "TW"), full=True)
         u["vp"] = vprofile(hlv[-60:], 16)
         time.sleep(0.3)
         if len(h) < 20:
@@ -1131,6 +1204,8 @@ def main():
             print("analyse error", u["code"], ex, file=sys.stderr)
             continue
         for d in back:
+            if u["code"] in backfill[d] or "per_last" not in cache.get(u["code"], {}):
+                continue   # 已經有紀錄，或財報還沒抓到（等抓到再補，免得補成錯的分類）
             hh = [x for x in h if x[0] <= d]
             if len(hh) < 20 or hh[-1][0] != d:
                 continue
@@ -1144,9 +1219,9 @@ def main():
         s.pop("hlv", None)
         stocks.append(s)
     for d, snap in backfill.items():
-        if len(snap) > 50:
+        if len(snap) > n_before[d] and len(snap) > 50:
             save(f"data/history/{d}.json", snap)
-    print("backfilled", {d: len(v) - 1 for d, v in backfill.items()})
+    print("backfilled", {d: len(v) - n_before[d] for d, v in backfill.items()})
 
     opt = {}
     for d in [x for x, _ in idx[-3:]][::-1]:   # 當天資料還沒出來就用前一個交易日
