@@ -246,6 +246,9 @@ def tpex_institutional(dates, tot):
                 fi = [i for i, n in enumerate(f) if "外資" in n and "買賣超" in n and "合計" in n] or \
                      [i for i, n in enumerate(f) if "外資" in n and "買賣超" in n]
                 ti = [i for i, n in enumerate(f) if "投信" in n and "買賣超" in n][:1]
+                if (not fi or not ti) and len(f) >= 14:
+                    # 欄位名稱只寫「買賣超股數」：固定順序是 外資(不含自營)、外資自營商、外資合計、投信、自營商…
+                    fi, ti = [10], [13]
         except Exception as e:
             print("tpex insti parse", e, file=sys.stderr)
         if not rows:
