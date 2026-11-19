@@ -11,6 +11,7 @@
 import datetime as dt
 import html
 import json
+import math
 import os
 import sys
 import time
@@ -199,13 +200,20 @@ def taifex_csv(url, form):
     return []
 
 
-def vprofile(bars, nbin=24):
-    """成交量分佈（Volume Profile）：把每天的成交量平均分到當天最低到最高價之間，累加成各價位的量"""
+def vprofile(bars, nbin=24, unit=None):
+    """成交量分佈（Volume Profile）：把每天的成交量平均分到當天最低到最高價之間，累加成各價位的量。
+    unit：價格刻度要對齊的單位（台指選履約價 50 點），每格會是它的整數倍"""
     bars = [(h, l, v) for h, l, v in bars if h and l and v and h >= l]
     if len(bars) < 10:
         return None
     lo, hi = min(l for _, l, _ in bars), max(h for h, _, _ in bars)
-    step = (hi - lo) / nbin or 1
+    if unit:
+        step = max(unit, math.ceil((hi - lo) / nbin / unit) * unit)
+        step = next((x for x in (50, 100, 200, 250, 500, 1000, 2000) if x >= step), step)
+        lo = math.floor(lo / step) * step
+        nbin = max(1, math.ceil((hi - lo) / step))
+    else:
+        step = (hi - lo) / nbin or 1
     vol = [0.0] * nbin
     for h, l, v in bars:
         a, b = int((l - lo) / step), min(nbin - 1, int((h - lo) / step))
@@ -304,7 +312,7 @@ def options(date, spot):
             out["foreign_" + ("call" if r[2].strip().upper() == "CALL" else "put")] = round((num(r[15]) or 0) / 1e5, 2)  # 千元 → 億
     fb = futures_bars(date)
     if fb:
-        out["vp"] = vprofile([(h, l, v) for h, l, v, _ in fb])
+        out["vp"] = vprofile([(h, l, v) for h, l, v, _ in fb], 24, unit=50)
         out["fut_close"] = fb[-1][3]
         out["fut_days"] = len(fb)
         sv = option_strike_volume(date)
@@ -765,7 +773,7 @@ def options_card(o, mkt):
                      f'<div><i class="{"poc" if ispoc else "va" if inva else ""}" style="width:{vp["vol"][i] / mx * 100:.0f}%"></i></div>'
                      f'{ob}<em>{"◀ 現在" if here else "最密集" if ispoc else ""}</em></div>')
         vp_html = (f'<h3 class="sub3">台指期成交量分佈（近 {o.get("fut_days", 60)} 個交易日）</h3>'
-                   f'<p class="note2">每一列是一個價格區間，長條越長代表在那裡成交越多。<b>銅色</b>是成交最密集的價位（{vp["poc"]:,.0f}），'
+                   f'<p class="note2">每一列是一個價格區間（每格 {vp["step"]:,.0f} 點，等於 {vp["step"] / 50:.0f} 個相鄰履約價，左邊數字是區間起點），長條越長代表在那裡成交越多。<b>銅色</b>是成交最密集的價位（{vp["poc"]:,.0f}），'
                    f'<b>深霧藍</b>是 70% 成交量集中的區間（{vp["val"]:,.0f}–{vp["vah"]:,.0f}）。跌破這個區間，代表很多人買在上面、正在虧損，賣壓容易變大。</p>'
                    + (f'<p class="note2">右欄是<b>台指選擇權</b>近 {o.get("opt_days", 20)} 個交易日在各履約價的成交量（<b style="color:var(--copper)">銅色</b>買權、<b style="color:var(--fogdeep)">霧藍</b>賣權），代表交易員押注的價位。'
                       + (f'上方買權最熱的是 {o["call_hot"]:,}，' if o.get("call_hot") else "")
