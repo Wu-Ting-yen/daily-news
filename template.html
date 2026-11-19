@@ -32,10 +32,26 @@ body{margin:0;color:var(--text);background:var(--plaster);
 body::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--grain);opacity:.18;pointer-events:none}
 
 /* 頂部：灰泥牆浮雕 + 霧藍果凍條紋 */
-header{position:sticky;top:0;z-index:5;padding-top:env(safe-area-inset-top);
+.navwrap{position:sticky;top:0;z-index:5;padding-top:env(safe-area-inset-top);
+  background:var(--stucco) center/300px,var(--plaster);background-blend-mode:multiply;box-shadow:0 1px 0 var(--line),0 8px 20px -12px #3a332833}
+@media (prefers-color-scheme:dark){.navwrap{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
+.panel{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 14px}
+.wx,.fx{border-radius:16px;padding:12px 14px;background:#ffffff8f;border:1px solid #ffffffb0;backdrop-filter:blur(6px);
+  box-shadow:0 4px 14px -8px #3a332840;min-width:0}
+@media (prefers-color-scheme:dark){.wx,.fx{background:#ffffff10;border-color:#ffffff18}}
+.lbl{font-size:12px;color:var(--fogdeep);letter-spacing:.08em}
+.now{display:flex;align-items:center;gap:8px;margin:2px 0}
+.ico{font-size:26px;line-height:1}
+.now .t small{font:500 14px 'Noto Sans TC',sans-serif;color:var(--sub);vertical-align:top;margin-left:2px}
+.now .t{font:600 34px/1.1 "Cormorant Garamond",serif;color:var(--text)}
+.sub{font-size:12.5px;color:var(--sub);line-height:1.5}
+.stars{color:var(--copper);font-size:17px;letter-spacing:2px;margin:4px 0 2px}
+.stars span{font-size:12px;color:var(--sub);letter-spacing:0;margin-left:4px}
+.note{font:500 13px/1.5 "Noto Serif TC",serif;color:var(--text);margin-top:4px}
+header.hero{padding-top:env(safe-area-inset-top);
   background:var(--stucco) center/300px,var(--plaster);background-blend-mode:multiply;
   box-shadow:0 1px 0 var(--line),0 8px 20px -12px #3a332833}
-@media (prefers-color-scheme:dark){header{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
+@media (prefers-color-scheme:dark){header.hero{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
 .top{display:flex;align-items:flex-end;justify-content:space-between;padding:16px 20px 12px}
 .brand{display:flex;flex-direction:column;line-height:1.1}
 .brand small{font:600 12px "Cormorant Garamond",serif;letter-spacing:.38em;color:var(--fogdeep);margin-bottom:6px}
@@ -98,14 +114,30 @@ details.others{margin-top:22px;border:1px dashed var(--line);border-radius:16px;
 </style>
 </head>
 <body>
-<header>
+<header class="hero">
   <div class="top">
     <div class="brand"><small>DAILY BRIEF</small><h1>每日<i>財經</i></h1></div>
     <div class="upd">UPDATED<br>{{UPDATED}}</div>
   </div>
+  <div class="panel">
+    <div class="wx" id="wx">
+      <div class="lbl">台北・此刻</div>
+      <div class="now"><span class="ico" id="wxi">·</span><span class="t" id="wxt">--°</span></div>
+      <div class="sub" id="wxd">天氣載入中…</div>
+      <div class="sub" id="wxh"></div>
+      <div class="sub" id="wxr"></div>
+    </div>
+    <div class="fx" id="fx">
+      <div class="lbl" id="lunar">農曆</div>
+      <div class="sub">今日財運</div>
+      <div class="stars" id="stars"></div>
+      <div class="sub" id="lucky"></div>
+      <div class="note" id="note"></div>
+    </div>
+  </div>
   <div class="stripe"></div>
-  <nav>{{NAV}}</nav>
 </header>
+<div class="navwrap"><nav>{{NAV}}</nav></div>
 <main>{{BODY}}</main>
 <button id="totop" aria-label="回到頂端">↑</button>
 <script>
@@ -117,7 +149,7 @@ details.others{margin-top:22px;border:1px dashed var(--line);border-radius:16px;
     secs.forEach(function(s){s.classList.toggle('on',s.id===id)});
     var b=btns.filter(function(x){return x.dataset.tab===id})[0];
     if(b) b.scrollIntoView({inline:'center',block:'nearest'});
-    window.scrollTo(0,0);
+    var nw=document.querySelector('.navwrap');if(scrollY>nw.offsetTop)window.scrollTo(0,nw.offsetTop);
     try{localStorage.setItem('tab',id)}catch(e){}
   }
   btns.forEach(function(b){b.onclick=function(){show(b.dataset.tab)}});
@@ -129,6 +161,40 @@ details.others{margin-top:22px;border:1px dashed var(--line);border-radius:16px;
     if(m<1) t.textContent='剛剛'; else if(m<60) t.textContent=m+' 分鐘前';
     else if(m<1440) t.textContent=Math.floor(m/60)+' 小時前';
   });
+
+  // ── 天氣（Open-Meteo，免費、不用金鑰）──
+  var W={0:['☀️','晴朗'],1:['🌤️','大致晴'],2:['⛅','多雲'],3:['☁️','陰天'],45:['🌫️','有霧'],48:['🌫️','有霧'],
+    51:['🌦️','毛毛雨'],53:['🌦️','毛毛雨'],55:['🌧️','毛毛雨'],61:['🌧️','小雨'],63:['🌧️','下雨'],65:['🌧️','大雨'],
+    80:['🌦️','陣雨'],81:['🌧️','陣雨'],82:['⛈️','強陣雨'],95:['⛈️','雷雨'],96:['⛈️','雷雨'],99:['⛈️','雷雨']};
+  fetch('https://api.open-meteo.com/v1/forecast?latitude=25.04&longitude=121.56&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FTaipei&forecast_days=1')
+  .then(function(r){return r.json()}).then(function(d){
+    var c=d.current,w=W[c.weather_code]||['🌡️',''];
+    document.getElementById('wxi').textContent=w[0];
+    document.getElementById('wxt').innerHTML=Math.round(c.temperature_2m)+'<small>°C</small>';
+    document.getElementById('wxd').textContent=w[1]+'・體感 '+Math.round(c.apparent_temperature)+'°';
+    document.getElementById('wxh').textContent='濕度 '+c.relative_humidity_2m+'%・降雨 '+d.daily.precipitation_probability_max[0]+'%';
+    document.getElementById('wxr').textContent='今日 '+Math.round(d.daily.temperature_2m_min[0])+'° – '+Math.round(d.daily.temperature_2m_max[0])+'°';
+  }).catch(function(){document.getElementById('wxd').textContent='天氣暫時抓不到'});
+
+  // ── 農曆、干支、每日財運（僅供娛樂）──
+  var tz=new Date(Date.now()+8*3600e3), ymd=tz.toISOString().slice(0,10);
+  var lunar='';
+  try{lunar=new Intl.DateTimeFormat('zh-TW-u-ca-chinese',{timeZone:'Asia/Taipei',month:'long',day:'numeric'}).format(new Date());}catch(e){}
+  var G='甲乙丙丁戊己庚辛壬癸',Z='子丑寅卯辰巳午未申酉戌亥';
+  var days=Math.floor((Date.UTC(+ymd.slice(0,4),+ymd.slice(5,7)-1,+ymd.slice(8,10))-Date.UTC(1949,9,1))/864e5);
+  var gz=((days%60)+60)%60, ganzhi=G[gz%10]+Z[gz%12]+'日';
+  var CN='初一 初二 初三 初四 初五 初六 初七 初八 初九 初十 十一 十二 十三 十四 十五 十六 十七 十八 十九 二十 廿一 廿二 廿三 廿四 廿五 廿六 廿七 廿八 廿九 三十'.split(' ');
+  lunar=lunar.replace(/^\d+年?/,'').replace(/(\d+)日?$/,function(m,d){return CN[d-1]||d});
+  document.getElementById('lunar').textContent=(lunar?'農曆 '+lunar+'・':'')+ganzhi;
+  var h=0;for(var i=0;i<ymd.length;i++)h=(h*31+ymd.charCodeAt(i))>>>0;
+  function pick(a,k){return a[(h>>>k)%a.length]}
+  var n=3+(h%3), colors=['霧藍','銅棕','象牙白','墨綠','酒紅','奶茶','石墨灰','香檳金','靛青'];
+  var notes=['逢低布局，耐心是今天的籌碼','多看少動，現金也是一種部位','順勢而為，別跟趨勢吵架','分批進出，心態比點位重要',
+    '財報季別追高，等回檔再說','今日宜整理持股、忌衝動下單','好消息出盡可能是壞消息','小賺也是賺，記得落袋',
+    '先想風險，再想報酬','把注意力放在本業，財自然來','今日貴人在東方，可多聽前輩意見','手氣不錯，但別加槓桿'];
+  document.getElementById('stars').innerHTML='★★★★★'.slice(0,n)+'☆☆☆☆☆'.slice(0,5-n)+'';
+  document.getElementById('lucky').textContent='幸運色 '+pick(colors,3)+'・數字 '+((h>>>7)%9+1);
+  document.getElementById('note').textContent='「'+pick(notes,11)+'」';
   var top=document.getElementById('totop');
   window.addEventListener('scroll',function(){top.classList.toggle('show',scrollY>600)},{passive:true});
   top.onclick=function(){window.scrollTo({top:0,behavior:'smooth'})};
