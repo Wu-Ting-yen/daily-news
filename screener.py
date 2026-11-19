@@ -95,10 +95,15 @@ def top(basic, close, mkt):
         code = str(pick(b, "公司代號", "SecuritiesCompanyCode") or "").strip()
         if not (len(code) == 4 and code.isdigit()) or code.startswith(("0", "91")):
             continue
-        shares = num(pick(b, "已發行普通股數或TDR原股發行股數", "已發行普通股數或TDR原發行股數", "普通股股數"))
+        shares = num(pick(b, "已發行普通股數或TDR原股發行股數", "已發行普通股數或TDR原發行股數", "IssueShares"))
+        if not shares and pick(b, "Paidin.Capital.NTDollars"):   # 櫃買英文欄位：實收資本額 ÷ 每股面額
+            cap = num(pick(b, "Paidin.Capital.NTDollars"))
+            par = num("".join(ch for ch in str(pick(b, "ParValueOfCommonStock") or "10") if ch.isdigit() or ch == ".") or 10) or 10
+            pref = num(pick(b, "PreferredStock.shares")) or 0
+            shares = cap / par - pref if cap else None
         px = close.get(code)
         if shares and px:
-            rows.append({"code": code, "name": str(pick(b, "公司簡稱", "公司名稱") or code).strip(), "mcap": shares * px, "mkt": mkt})
+            rows.append({"code": code, "name": str(pick(b, "公司簡稱", "CompanyAbbreviation", "公司名稱", "CompanyName") or code).strip(), "mcap": shares * px, "mkt": mkt})
     rows.sort(key=lambda r: -r["mcap"])
     print("universe", mkt, len(rows), [r["name"] for r in rows[:5]])
     return rows[:UNIVERSE]
@@ -212,17 +217,30 @@ def institutional(dates):
     return tot, used
 
 
+def post_json(url, form):
+    try:
+        req = urllib.request.Request(url, data=urllib.parse.urlencode(form).encode(), headers=UA)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+    except Exception as e:
+        print("post failed:", url[:80], e, file=sys.stderr)
+        return None
+
+
 def tpex_institutional(dates, tot):
     """上櫃三大法人買賣超（股），加到 tot；回傳成功的日期"""
     used = []
     for d in dates:
         y, m, dd = d.split("-")
         rows, fi, ti = None, None, None
-        j = get(f"https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date={y}%2F{m}%2F{dd}&response=json", tries=2)
+        j = post_json("https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade",
+                      {"type": "Daily", "sect": "EW", "date": f"{y}/{m}/{dd}", "id": "", "response": "json"})
         try:
             t = (j or {}).get("tables") or []
             if t and t[0].get("data"):
                 f = [str(x) for x in t[0].get("fields") or []]
+                if d == dates[-1]:
+                    print("tpex insti fields", f)
                 rows = t[0]["data"]
                 # 「外資及陸資合計」或「外資及陸資(不含外資自營商)」＋「外資自營商」的買賣超
                 fi = [i for i, n in enumerate(f) if "外資" in n and "買賣超" in n and "合計" in n] or \
@@ -237,7 +255,7 @@ def tpex_institutional(dates, tot):
             fi, ti = [10], [13]   # 舊版固定欄位：外資及陸資合計買賣超、投信買賣超
         time.sleep(2)
         if not rows or not fi or not ti:
-            print("tpex insti none", d, file=sys.stderr)
+            print("tpex insti none", d, str(j)[:300], file=sys.stderr)
             continue
         used.append(d)
         for row in rows:
