@@ -196,6 +196,35 @@ def refresh_cache(codes, cache, fm, today):
     return cache
 
 
+def refresh_bs(codes, cache, fm, today):
+    """資產負債表（合約負債、存貨）：一季才變一次，30 天重抓；用剩下的 FinMind 額度"""
+    start = (today - dt.timedelta(days=800)).strftime("%Y-%m-%d")
+    order = sorted(codes, key=lambda c: cache.get(c, {}).get("bs_at", ""))
+    n = 0
+    for code in order:
+        c = cache.get(code)
+        if not c or c.get("bs_at", "") >= (today - dt.timedelta(days=30)).isoformat():
+            continue
+        rows = fm("TaiwanStockBalanceSheet", code, start)
+        if rows is None:
+            break
+        bs = {}
+        for r in rows:
+            t, name = str(r.get("type", "")), str(r.get("origin_name", ""))
+            if t.endswith("_per"):
+                continue
+            d = bs.setdefault(r["date"], [0.0, None])
+            if t.startswith("ContractLiabilit") or "合約負債" in name:
+                d[0] += r["value"] or 0
+            elif t == "Inventories" or name == "存貨":
+                d[1] = r["value"]
+        c["bs"] = dict(sorted(bs.items())[-6:])
+        c["bs_at"] = today.isoformat()
+        n += 1
+    print("balance sheets fetched", n)
+    return cache
+
+
 def institutional(dates):
     """最近幾個交易日的外資＋投信買賣超（股）"""
     tot = {}
@@ -605,6 +634,38 @@ def analyse(s, rev, cache, inst, mkt_dd):
         qt.append([f"{k[2:4]}Q{(int(k[5:7]) - 1) // 3 + 1}", d.get("EPS"), g and round(g, 1)])
     s["q5"] = qt
 
+    # 2.5) 未來需求的線索：合約負債（客戶預付款，常代表訂單）、存貨 vs 營收
+    bs = c.get("bs") or {}
+    if bs:
+        k0 = sorted(bs)[-1]
+        k1 = f"{int(k0[:4]) - 1}{k0[4:]}"
+        cl0, inv0 = bs[k0]
+        cl1, inv1 = (bs.get(k1) or [None, None])
+        qr0, qr1 = (q.get(k0) or {}).get("Revenue"), (q.get(k1) or {}).get("Revenue")
+        dm = {"q": f"{k0[2:4]}Q{(int(k0[5:7]) - 1) // 3 + 1}"}
+        if cl0 and cl1 and cl1 > 0 and (qr0 is None or cl0 >= qr0 * 0.02):   # 合約負債太小的公司不看
+            dm["cl_yoy"] = round((cl0 / cl1 - 1) * 100)
+            dm["cl"] = round(cl0 / 1e8, 1)
+        if inv0 and inv1 and inv1 > 0:
+            dm["inv_yoy"] = round((inv0 / inv1 - 1) * 100)
+        if qr0 and qr1 and qr1 > 0:
+            dm["qrev_yoy"] = round((qr0 / qr1 - 1) * 100)
+        s["demand"] = dm
+        if dm.get("cl_yoy") is not None:
+            if dm["cl_yoy"] >= 30:
+                score += 1
+                reasons.append(("good", f"客戶預付款（合約負債）{dm['cl']:.1f} 億，比去年同期多 {dm['cl_yoy']}%：客戶先付錢卡位，通常代表接下來的訂單變多"))
+            elif dm["cl_yoy"] <= -30:
+                score -= 1
+                reasons.append(("bad", f"客戶預付款（合約負債）比去年同期少 {-dm['cl_yoy']}%：預先下的訂單變少，未來營收可能放緩"))
+        if dm.get("inv_yoy") is not None and dm.get("qrev_yoy") is not None:
+            gap = dm["inv_yoy"] - dm["qrev_yoy"]
+            if gap >= 25 and dm["inv_yoy"] >= 20:
+                score -= 1
+                reasons.append(("bad", f"存貨比去年多 {dm['inv_yoy']}%，但營收只成長 {dm['qrev_yoy']}%：東西做出來賣得沒那麼快，可能是需求轉弱的早期訊號"))
+            elif gap <= -25 and dm["qrev_yoy"] >= 10:
+                reasons.append(("good", f"營收成長 {dm['qrev_yoy']}%，存貨只變化 {dm['inv_yoy']:+d}%：貨很快被買走，需求健康"))
+
     # 3) 估值：跟自己過去三年比
     pl = c.get("per_last")
     base = dict(s.get("hist_all") or hist).get(pl["date"]) if pl else None   # 補算舊日期時，用完整股價找本益比的基準日
@@ -682,6 +743,144 @@ def analyse(s, rev, cache, inst, mkt_dd):
     s["rank"] = round(score + (2 if cheap else 0) + (1 if smart else 0) + min(-dd, 40) / 10, 2)
     s["vs_mkt"] = round(dd - mkt_dd, 1)
     return s
+
+
+# ───────────────────────── 同業比較、需求展望、文字說明 ─────────────────────────
+
+def _avg(v):
+    v = [x for x in v if x is not None]
+    return sum(v) / len(v) if v else None
+
+
+def _med(v):
+    v = sorted(x for x in v if x is not None and x > 0)
+    return v[len(v) // 2] if v else None
+
+
+def peer_compare(stocks):
+    """同產業、市值最接近的 4 家：比成長、毛利率、估值、跌幅"""
+    by_ind = {}
+    for s in stocks:
+        if s.get("industry"):
+            by_ind.setdefault(s["industry"], []).append(s)
+    for s in stocks:
+        same = [x for x in by_ind.get(s.get("industry"), []) if x is not s and x.get("mcap")]
+        if len(same) < 2 or not s.get("mcap"):
+            continue
+        same.sort(key=lambda x: abs(math.log(x["mcap"] / s["mcap"])))
+        ps = same[:4]
+        ra, ea = _avg([x.get("rev_yoy") for x in ps]), _avg([x.get("eps_yoy") for x in ps])
+        ga, pm, da = _avg([x.get("gm") for x in ps]), _med([x.get("pe") for x in ps]), _avg([x["dd"] for x in ps])
+        better = worse = 0
+        bits = []
+        if s.get("rev_yoy") is not None and ra is not None:
+            d = s["rev_yoy"] - ra
+            better += d >= 5; worse += d <= -5
+            bits.append(f"營收年增 {s['rev_yoy']:+.0f}%，同業平均 {ra:+.0f}%")
+        if s.get("eps_yoy") is not None and ea is not None:
+            d = s["eps_yoy"] - ea
+            better += d >= 10; worse += d <= -10
+            bits.append(f"獲利年增 {s['eps_yoy']:+.0f}%，同業平均 {ea:+.0f}%")
+        if s.get("gm") is not None and ga is not None:
+            d = s["gm"] - ga
+            better += d >= 3; worse += d <= -3
+            bits.append(f"毛利率 {s['gm']:.0f}%，同業平均 {ga:.0f}%")
+        rel = "優於同業" if better >= 2 and worse == 0 else "落後同業" if worse >= 2 and better == 0 else "跟同業差不多"
+        cheaper = s.get("pe") and pm and s["pe"] < pm * 0.85
+        pricier = s.get("pe") and pm and s["pe"] > pm * 1.15
+        fell_more = da is not None and s["dd"] < da - 5
+        if s.get("pe") and pm:
+            bits.append(f"本益比 {s['pe']:.0f} 倍，同業中位數 {pm:.0f} 倍")
+        if da is not None:
+            bits.append(f"股價距高點 {s['dd']:+.0f}%，同業平均 {da:+.0f}%")
+        if rel == "優於同業" and fell_more:
+            concl = "成長和獲利都比規模相近的同業好，股價卻跌得更多，相對同業來看更像是被錯殺。"
+        elif rel == "優於同業" and cheaper:
+            concl = "成長比同業好，本益比還比同業低，相對價值比較明顯。"
+        elif rel == "優於同業":
+            concl = "基本面比同業強，市場也已經給它比較高的評價。"
+        elif rel == "落後同業" and pricier:
+            concl = "成長落後同業、估值卻比同業貴，就算過去財報不錯，相對來說吸引力不高，要小心。"
+        elif rel == "落後同業":
+            concl = "成長落後規模相近的同業，就算自己跟去年比還在成長，資金比較可能流向同業裡更強的公司。"
+        elif cheaper:
+            concl = "基本面跟同業差不多，但本益比比同業便宜。"
+        elif pricier:
+            concl = "基本面跟同業差不多，本益比卻比同業貴。"
+        else:
+            concl = "基本面和估值都跟同業差不多，沒有特別突出。"
+        names = "、".join(x["name"] for x in ps)
+        s["peer"] = {"rel": rel, "names": names, "text": "；".join(bits) + "。" + concl,
+                     "rows": [{k: x.get(k) for k in ("code", "name", "rev_yoy", "eps_yoy", "gm", "pe", "dd")} | {"mcap": round(x["mcap"] / 1e8)}
+                              for x in [s] + ps]}
+        s["reasons"].append(("good" if rel == "優於同業" else "bad" if rel == "落後同業" else "mid",
+                             f"跟同業（{names}）比：{rel}。{concl}"))
+
+
+def apply_outlook(stocks, outlook):
+    """每日排程用新聞整理的「未來需求」重點（data/outlook.json）"""
+    for s in stocks:
+        o = outlook.get(s["code"])
+        if not o:
+            continue
+        s["outlook"] = o
+        v = o.get("view", "")
+        kind = "good" if "增溫" in v else "bad" if "轉弱" in v else "mid"
+        s["reasons"].append((kind, f"新聞面（{o.get('date', '')[5:].replace('-', '/')} 整理）：未來需求{v}。{o.get('summary', '')}"))
+
+
+def _phr(s, good=True):
+    out = []
+    ry, ey, gy = s.get("rev_yoy"), s.get("eps_yoy"), s.get("gm_yoy")
+    if good:
+        if ry is not None and ry >= 5: out.append(f"營收比去年多 {ry:.0f}%")
+        if ey is not None and ey >= 5: out.append(f"獲利成長 {ey:.0f}%")
+        if gy is not None and gy >= 1: out.append("毛利率變高")
+        if (s.get("demand") or {}).get("cl_yoy", 0) >= 30: out.append("客戶預付款大增")
+    else:
+        if ry is not None and ry <= -5: out.append(f"營收比去年少 {-ry:.0f}%")
+        if ey is not None and ey <= -5: out.append(f"獲利衰退 {-ey:.0f}%")
+        if gy is not None and gy <= -2: out.append("毛利率下滑")
+        out += list(s.get("flags") or [])
+    return "、".join(dict.fromkeys(out))
+
+
+def story(s, hedge_level=None):
+    dd, cat = -s["dd"], s["cat"]
+    g, b = _phr(s, True), _phr(s, False)
+    rank = s.get("pe_rank") if s.get("pe_rank") is not None else s.get("pb_rank")
+    val = f"本益比在過去三年最便宜的 {max(1, round(rank * 100))}% 區間" if rank is not None and rank <= 0.3 else \
+          "本益比在過去三年的中間位置" if rank is not None and rank < 0.6 else \
+          "本益比在過去三年偏貴的位置" if rank is not None else "估值資料還不夠"
+    if cat == "oversold":
+        t = f"股價離三個月高點跌了 {dd:.0f}%，但公司本身還在變好（{g or '基本面穩定'}），{val}。所以判斷這次下跌主要是被大盤和資金撤出拖累，不是公司出了問題。"
+    elif cat == "pricey":
+        t = f"股價跌了 {dd:.0f}%，公司本身沒變差（{g or '基本面穩定'}），但{val}。代表之前漲得多、市場期待高，現在比較像在修正過高的期待，還稱不上便宜。"
+    elif cat == "weak":
+        t = f"判斷基本面轉弱，因為{b or '整體分數偏低'}。這種跌是有理由的，看起來便宜可能是因為未來獲利會更差。"
+    elif cat == "strong":
+        t = f"基本面不錯（{g or '穩定'}），股價只離高點 {dd:.0f}%，比大盤抗跌，代表市場仍然認同。"
+    else:
+        t = f"有好有壞（好：{g or '—'}；壞：{b or '—'}），目前看不出明確方向，股價離高點 {dd:.0f}%。"
+    p = s.get("peer")
+    if p:
+        t += f"和規模相近的同業比，{p['rel']}：" + p["text"].split("。")[-2] + "。"
+    dm = s.get("demand") or {}
+    if dm.get("cl_yoy") is not None or dm.get("inv_yoy") is not None:
+        parts = []
+        if dm.get("cl_yoy") is not None:
+            parts.append(f"客戶預付款比去年{'多' if dm['cl_yoy'] >= 0 else '少'} {abs(dm['cl_yoy'])}%")
+        if dm.get("inv_yoy") is not None and dm.get("qrev_yoy") is not None:
+            parts.append(f"存貨變化 {dm['inv_yoy']:+d}%、營收 {dm['qrev_yoy']:+d}%")
+        t += f"未來需求的線索（{dm.get('q', '')} 財報）：" + "，".join(parts) + "。"
+    o = s.get("outlook")
+    if o:
+        t += f"新聞面看未來需求{o.get('view', '')}：{o.get('summary', '')}"
+        if not t.endswith("。"):
+            t += "。"
+    if hedge_level == "建議避險" and cat in ("oversold", "pricey"):
+        t += "不過大盤避險燈號亮著，短線就算個股便宜，也可能跟著大盤再跌。"
+    s["story"] = t
 
 
 # ───────────────────────── 網頁 ─────────────────────────
@@ -773,6 +972,21 @@ def card(s, i=None):
         gm = "".join(f"<td>{g:.1f}%</td>" if g is not None else "<td>—</td>" for _, _, g in s["q5"])
         detail += (f'<div class="dt"><h4>近 5 季</h4><table><tr><th></th>{head}</tr><tr><th>EPS</th>{eps}</tr>'
                    + (f'<tr><th>毛利率</th>{gm}</tr>' if any(g is not None for _, _, g in s["q5"]) else "") + '</table></div>')
+    pr = s.get("peer")
+    if pr:
+        def f_(v, sfx="%", sign=True):
+            return "—" if v is None else (f"{v:+.0f}{sfx}" if sign else f"{v:.0f}{sfx}")
+        trs = "".join(f'<tr class="{"me" if i == 0 else ""}"><th>{e(r["name"])}</th><td>{r["mcap"]:,}</td><td>{f_(r.get("rev_yoy"))}</td>'
+                      f'<td>{f_(r.get("eps_yoy"))}</td><td>{f_(r.get("gm"), "%", False)}</td><td>{f_(r.get("pe"), "", False)}</td><td>{f_(r.get("dd"))}</td></tr>'
+                      for i, r in enumerate(pr["rows"]))
+        detail += (f'<div class="dt"><h4>同業比較・{e(pr["rel"])}</h4><div class="tw"><table class="peer"><tr><th></th><th>市值(億)</th><th>營收年增</th>'
+                   f'<th>獲利年增</th><th>毛利率</th><th>本益比</th><th>距高點</th></tr>{trs}</table></div>'
+                   f'<p class="dnote">同產業（{e(s.get("industry", ""))}）裡市值最接近的 {len(pr["rows"]) - 1} 家。</p></div>')
+    o = s.get("outlook")
+    if o:
+        src = "".join(f'<li><a href="{e(x.get("url", ""))}" target="_blank" rel="noopener">{e(x.get("title", ""))}</a></li>' for x in (o.get("sources") or [])[:4])
+        detail += (f'<div class="dt"><h4>未來需求・新聞重點（{e(o.get("date", ""))}）</h4><p class="olk"><b>{e(o.get("view", ""))}</b>　{e(o.get("summary", ""))}</p>'
+                   + (f'<ul class="src">{src}</ul>' if src else "") + '</div>')
     badge = ""
     if s["cat"] == "oversold":
         n = 1 + (1 if s["dd"] <= -30 else 0) + (1 if (s.get("trust") or 0) > 0.5 or (s.get("foreign") or 0) > 2 else 0)
@@ -785,7 +999,8 @@ def card(s, i=None):
   </a>
   <div class="sk">{spark_svg(s["spark"])}{badge}</div>
   <div class="chips">{chip_html}</div>
-  <details><summary>為什麼這樣判斷</summary><ul class="why">{rs}</ul>{detail}</details>
+  {f'<p class="story">{e(s["story"])}</p>' if s.get("story") else ""}
+  <details><summary>細節：每一項的判斷、同業、需求</summary><ul class="why">{rs}</ul>{detail}</details>
 </article>'''
 
 
@@ -1083,7 +1298,8 @@ def track(stocks, date, after_close):
             rank = s.get("pe_rank") if s.get("pe_rank") is not None else s.get("pb_rank")
             buying = (s.get("foreign") or 0) + (s.get("trust") or 0) > 0   # 外資＋投信近 5 日合計買超
             kind, stage = None, "確認"
-            good = s["cat"] == "oversold" and s["fund"] >= 5 and rank is not None and rank <= 0.1 and buying
+            lag = (s.get("peer") or {}).get("rel") == "落後同業" or "轉弱" in (s.get("outlook") or {}).get("view", "")
+            good = s["cat"] == "oversold" and s["fund"] >= 5 and rank is not None and rank <= 0.1 and buying and not lag
             if good and s["streak"] >= 3:
                 kind = "錯殺"
             elif good:
@@ -1097,7 +1313,9 @@ def track(stocks, date, after_close):
                  "industry": s.get("industry"), "price": s["price"], "dd": s["dd"], "fund": s["fund"], "streak": s["streak"],
                  "rev_yoy": s.get("rev_yoy"), "eps_yoy": s.get("eps_yoy"), "gm": s.get("gm"), "gm_yoy": s.get("gm_yoy"),
                  "pe": s.get("pe"), "pb": s.get("pb"), "val_rank": rank, "foreign": s.get("foreign"), "trust": s.get("trust"),
-                 "flags": s["flags"], "reasons": [t for _, t in s["reasons"]], "rev6": s.get("rev6"), "q5": s.get("q5")}
+                 "flags": s["flags"], "reasons": [t for _, t in s["reasons"]], "rev6": s.get("rev6"), "q5": s.get("q5"),
+                 "story": s.get("story"), "peer": (s.get("peer") or {}).get("text"), "peer_rel": (s.get("peer") or {}).get("rel"),
+                 "demand": s.get("demand"), "outlook": s.get("outlook")}
             x["strength"] = "強" if kind == "轉弱" or (s["fund"] >= 6 and rank <= 0.05) else "中"
             if OPT.get("hedge"):
                 pcv = (OPT.get("pc") or [[0, None]])[-1][1]
@@ -1187,7 +1405,9 @@ def main():
             rev.setdefault(str(r["公司代號"]).strip(), r)
 
     cache = load("data/stock_cache.json", {})
-    cache = refresh_cache([u["code"] for u in uni], cache, FinMind(), today)
+    fm = FinMind()
+    cache = refresh_cache([u["code"] for u in uni], cache, fm, today)
+    cache = refresh_bs([u["code"] for u in uni], cache, fm, today)
     save("data/stock_cache.json", cache)
 
     inst, inst_days = institutional([d for d, _ in idx[-5:]])
@@ -1256,6 +1476,10 @@ def main():
 
 
     after_close = last_date == today.isoformat() and now.hour * 100 + now.minute >= 1430
+    peer_compare(stocks)
+    apply_outlook(stocks, load("data/outlook.json", {}))
+    for s in stocks:
+        story(s, (opt.get("hedge") or {}).get("level"))
     sig, new = track(stocks, last_date, after_close)
     print("signals new", [(x["name"], x["type"]) for x in new])
 

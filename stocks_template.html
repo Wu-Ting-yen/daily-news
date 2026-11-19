@@ -258,6 +258,19 @@ main.searching #sres{display:block}
 .shint b{color:var(--copper);font-weight:600}
 .smiss{padding:16px 18px;border:1px dashed var(--line);border-radius:14px;background:var(--card);font-size:14px;line-height:1.7}
 .smiss a{color:var(--fogdeep)}
+.story{font:500 14px/1.85 "Noto Serif TC",serif;color:var(--text);margin:0;padding:0 18px 14px;letter-spacing:.01em}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.peer{border-collapse:collapse;font-size:12.5px;min-width:100%;white-space:nowrap}
+table.peer th,table.peer td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line)}
+table.peer th:first-child{text-align:left;font-weight:600}
+table.peer tr:first-child th{font-weight:500;color:var(--sub);font-size:11.5px}
+table.peer tr.me{background:#b07a5514}
+table.peer tr.me th{color:var(--copper)}
+.dnote{font-size:12px;color:var(--sub);margin:6px 2px 0}
+.olk{font-size:13.5px;line-height:1.75;margin:4px 2px}
+.olk b{color:var(--copper)}
+ul.src{margin:6px 0 0;padding-left:18px;font-size:12.5px;line-height:1.7}
+ul.src a{color:var(--fogdeep)}
 #totop{position:fixed;right:18px;bottom:calc(22px + env(safe-area-inset-bottom));width:46px;height:46px;border-radius:50%;
   border:1px solid #ffffff90;color:#fff;font-size:18px;cursor:pointer;
   background:repeating-linear-gradient(90deg,var(--fog) 0 8px,#9fb2c3 8px 14px);
@@ -312,7 +325,7 @@ main.searching #sres{display:block}
       sres.innerHTML='<div class="smiss">「'+esc(v)+'」不在這裡追蹤的 300 檔裡（市值前 150 大的上市股＋前 150 大的上櫃股）。<br>可以先到 <a href="'+yq+'" target="_blank" rel="noopener">Yahoo 股市看這檔 ↗</a>，或告訴我把它加進追蹤名單。</div>';
       return}
     var p=document.createElement('p');p.className='shint';
-    p.innerHTML='找到 <b>'+hit.length+'</b> 檔'+(hit.length>12?'，先列前 12 檔':'')+'。點「為什麼這樣判斷」看完整分析。';
+    p.innerHTML='找到 <b>'+hit.length+'</b> 檔'+(hit.length>12?'，先列前 12 檔':'')+'。每檔下面有文字說明，點「細節」看同業比較和每一項判斷。';
     sres.appendChild(p);
     hit.slice(0,12).forEach(function(a,i){var c=a.cloneNode(true);var k=(a.className.match(/oversold|pricey|weak|strong|mixed/)||[])[0];
       var tag=document.createElement('p');tag.className='shint';tag.innerHTML='分類：<b>'+(CN[k]||'')+'</b>';
