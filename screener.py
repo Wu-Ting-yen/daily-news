@@ -294,6 +294,8 @@ def options(date, spot):
     rows.sort(key=lambda r: r[0])
     if rows:
         out["pc"] = [[r[0].replace("/", "-"), num(r[3]), num(r[6]), int((num(r[4]) or 0) + (num(r[5]) or 0))] for r in rows][-20:]
+        if out["pc"][-1][0] != date:
+            return {}  # 當天資料還沒公布，讓呼叫端改用前一個交易日
         out["oi"] = out["pc"][-1][3]
         out["oi_put"], out["oi_call"] = int(num(rows[-1][4]) or 0), int(num(rows[-1][5]) or 0)
     fi = taifex_csv("https://www.taifex.com.tw/cht/3/callsAndPutsDateDown", {"queryStartDate": d, "queryEndDate": d, "commodityId": "TXO"})
@@ -778,6 +780,7 @@ def options_card(o, mkt):
         ch5 = (o["oi"] / pc[-6][3] - 1) * 100 if len(pc) > 5 and pc[-6][3] else None
         stats += (f'<div><span class="lbl">選擇權總未平倉</span><b>{o["oi"]:,}</b><small>口・'
                   + (f"比前一天 {ch1:+.0f}%" if ch1 is not None else "") + (f"、5 天 {ch5:+.0f}%" if ch5 is not None else "")
+                  + ("（週三是結算日，到期合約退場，未平倉減少屬正常）" if ch1 is not None and ch1 < -15 and dt.date.fromisoformat(pc[-1][0]).weekday() == 2 else "")
                   + '</small></div>')
     if pc:
         vals = [x[1] for x in pc]
