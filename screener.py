@@ -986,7 +986,7 @@ def track(stocks, date, after_close):
         recent = {(x["code"], x["type"], x.get("stage", "確認")) for x in sig if x["date"] >= (dt.date.fromisoformat(date) - dt.timedelta(days=30)).isoformat()}
         for s in stocks:
             rank = s.get("pe_rank") if s.get("pe_rank") is not None else s.get("pb_rank")
-            buying = (s.get("foreign") or 0) > 0 or (s.get("trust") or 0) > 0
+            buying = (s.get("foreign") or 0) + (s.get("trust") or 0) > 0   # 外資＋投信近 5 日合計買超
             kind, stage = None, "確認"
             good = s["cat"] == "oversold" and s["fund"] >= 5 and rank is not None and rank <= 0.1 and buying
             if good and s["streak"] >= 3:
