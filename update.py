@@ -170,7 +170,11 @@ def find_chat_id():
 
 
 def render(cfg, store, updated):
-    groups = cluster(list(store.values()))
+    groups = cluster([v for v in store.values() if not v.get("low")])
+    low = {}
+    for v in sorted(store.values(), key=lambda x: x["time"], reverse=True):
+        if v.get("low"):
+            low.setdefault(v["section"], []).append(v)
     newest = lambda g: max(x["time"] for x in g)
     groups.sort(key=newest, reverse=True)
     alerts = [g for g in groups if any(x.get("alert") for x in g)][:15]
@@ -207,12 +211,19 @@ def render(cfg, store, updated):
             out += "</div></details>"
         return out + "</article>"
 
-    tabs = [("alerts", "🔔 重大快訊", alerts)] + [(s["id"], s["name"], by_sec[s["id"]]) for s in cfg["sections"]]
+    tabs = [("alerts", "重大快訊", alerts)] + [(s["id"], s["name"], by_sec[s["id"]]) for s in cfg["sections"]]
     nav = "".join(f'<button data-tab="{i}">{html.escape(n)}<b>{len(l)}</b></button>' for i, n, l in tabs)
     body = ""
     for i, n, l in tabs:
+        extra = ""
+        if low.get(i):
+            extra = (f'<details class="others"><summary>其他來源・論壇與娛樂 {len(low[i])} 則</summary><div class="rels">'
+                     + "".join(f'<a class="rel" href="{html.escape(x["link"])}" target="_blank" rel="noopener">'
+                               f'<span>{html.escape(x["title"])}</span><div class="meta"><span class="src">'
+                               f'{html.escape(x["source"])}</span>{ago(x["time"])}</div></a>' for x in low[i][:30])
+                     + "</div></details>")
         body += (f'<section id="{i}" data-name="{html.escape(n)}">'
-                 + ("".join(card(g) for g in l) or '<p class="empty">目前沒有新消息</p>') + "</section>")
+                 + ("".join(card(g) for g in l) or '<p class="empty">目前沒有新消息</p>') + extra + "</section>")
 
     tpl = open(os.path.join(ROOT, "template.html"), encoding="utf-8").read()
     out = tpl.replace("{{UPDATED}}", updated).replace("{{NAV}}", nav).replace("{{BODY}}", body)
@@ -227,7 +238,7 @@ def main():
     now = datetime.now(TPE)
     cutoff = now - timedelta(days=cfg.get("keep_days", 3))
     kws = [k.lower() for k in cfg.get("alert_keywords", [])]
-    block = cfg.get("block_sources", [])
+    block = cfg.get("other_sources", [])
     titles = {norm(v["title"]) for v in store.values()}
     old_ids = set(store)
 
@@ -241,25 +252,29 @@ def main():
             continue
         for it in items:
             nt = norm(it["title"])
-            if (datetime.fromisoformat(it["time"]) < cutoff or it["id"] in store or nt in titles
-                    or any(b.lower() in it["source"].lower() for b in block)):
+            if datetime.fromisoformat(it["time"]) < cutoff or it["id"] in store or nt in titles:
                 continue
             titles.add(nt)
-            if any(k in it["title"].lower() for k in kws):
+            if any(b.lower() in it["source"].lower() for b in block):
+                it["low"] = True  # 論壇、娛樂等：不刪，放到每個分頁最下面收合
+            elif any(k in it["title"].lower() for k in kws):
                 it["alert"] = True
             store[it["id"]] = it
 
     # 只有「全新的事件」才推播；同一件事後續的報導不再重複通知
     new_alerts = []
     if not first_run:
-        for g in cluster([v for v in store.values() if datetime.fromisoformat(v["time"]) >= cutoff]):
+        for g in cluster([v for v in store.values() if datetime.fromisoformat(v["time"]) >= cutoff and not v.get("low")]):
             lead = g[0]
             if (lead["id"] not in old_ids and lead.get("alert")
                     and datetime.fromisoformat(lead["time"]) > now - timedelta(hours=6)):
                 new_alerts.append(lead)
 
-    store = {k: v for k, v in store.items() if datetime.fromisoformat(v["time"]) >= cutoff
-             and not any(b.lower() in v["source"].lower() for b in block)}
+    for v in store.values():
+        if any(b.lower() in v["source"].lower() for b in block):
+            v["low"] = True
+            v.pop("alert", None)
+    store = {k: v for k, v in store.items() if datetime.fromisoformat(v["time"]) >= cutoff}
     save("data/news.json", store)
     render(cfg, store, now.strftime("%Y/%m/%d %H:%M"))
 
