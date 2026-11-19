@@ -256,6 +256,32 @@ def futures_bars(date):
     return [bars[d] for d in sorted(bars)][-60:]
 
 
+def option_strike_volume(date, days=28):
+    """台指選擇權近一個月各履約價的成交量（買權、賣權分開，所有到期合約、日盤＋夜盤）"""
+    e = dt.date.fromisoformat(date)
+    rows = taifex_csv("https://www.taifex.com.tw/cht/3/optDataDown",
+                      {"down_type": "1", "commodity_id": "TXO", "commodity_id2": "",
+                       "queryStartDate": (e - dt.timedelta(days=days)).strftime("%Y/%m/%d"), "queryEndDate": e.strftime("%Y/%m/%d")})
+    if len(rows) < 2:
+        return {}
+    h = rows[0]
+    try:
+        ik, icp, iv, idt = h.index("履約價"), h.index("買賣權"), h.index("成交量"), h.index("交易日期")
+    except ValueError:
+        return {}
+    out, dates = {}, set()
+    for r in rows[1:]:
+        if len(r) <= iv:
+            continue
+        k = num(r[ik])
+        if not k:
+            continue
+        t = out.setdefault(int(k), [0, 0])
+        t[0 if r[icp].strip() == "買權" else 1] += int(num(r[iv]) or 0)
+        dates.add(r[idt])
+    return {"by": out, "days": len(dates)}
+
+
 def options(date, spot):
     """台指選擇權：總未平倉與變化、Put/Call 比、外資部位；台指期成交量分佈"""
     d = date.replace("-", "/")
@@ -277,6 +303,25 @@ def options(date, spot):
         out["vp"] = vprofile([(h, l, v) for h, l, v, _ in fb])
         out["fut_close"] = fb[-1][3]
         out["fut_days"] = len(fb)
+        sv = option_strike_volume(date)
+        vp = out["vp"]
+        if sv.get("by") and vp:
+            n = len(vp["vol"])
+            ob = [[0, 0] for _ in range(n)]
+            for k, (c, p_) in sv["by"].items():
+                i = int((k - vp["lo"]) / vp["step"])
+                if 0 <= i < n:
+                    ob[i][0] += c; ob[i][1] += p_
+            vp["opt"] = ob
+            out["opt_days"] = sv["days"]
+            # 選擇權成交最集中的買權／賣權履約價（在期貨價上下方）
+            px = fb[-1][3]
+            up = {k: v[0] for k, v in sv["by"].items() if px <= k <= px * 1.12}
+            dn = {k: v[1] for k, v in sv["by"].items() if px * 0.88 <= k < px}
+            if up:
+                out["call_hot"] = max(up, key=up.get)
+            if dn:
+                out["put_hot"] = max(dn, key=dn.get)
     return out
 
 
@@ -698,6 +743,7 @@ def options_card(o, mkt):
     vp, px = o.get("vp"), o.get("fut_close")
     if vp:
         mx = max(vp["vol"]) or 1
+        omx = max((max(a, b) for a, b in vp.get("opt") or [[0, 0]]), default=0) or 1
         rows = ""
         n = len(vp["vol"])
         for i in reversed(range(n)):
@@ -706,13 +752,23 @@ def options_card(o, mkt):
             inva = vp["val"] <= lo + 1e-6 and hi <= vp["vah"] + 1e-6
             ispoc = lo <= vp["poc"] < hi
             here = px is not None and lo <= px < hi
-            rows += (f'<div class="vp-r{" here" if here else ""}"><span>{lo:,.0f}</span>'
+            ob = ""
+            if vp.get("opt"):
+                c, p_ = vp["opt"][i]
+                ob = (f'<div class="ob"><i class="p" style="width:{p_ / omx * 100:.0f}%"></i>'
+                      f'<i class="c" style="width:{c / omx * 100:.0f}%"></i></div>')
+            rows += (f'<div class="vp-r{" here" if here else ""}{" two" if ob else ""}"><span>{lo:,.0f}</span>'
                      f'<div><i class="{"poc" if ispoc else "va" if inva else ""}" style="width:{vp["vol"][i] / mx * 100:.0f}%"></i></div>'
-                     f'<em>{"◀ 現在" if here else "最密集" if ispoc else ""}</em></div>')
+                     f'{ob}<em>{"◀ 現在" if here else "最密集" if ispoc else ""}</em></div>')
         vp_html = (f'<h3 class="sub3">台指期成交量分佈（近 {o.get("fut_days", 60)} 個交易日）</h3>'
                    f'<p class="note2">每一列是一個價格區間，長條越長代表在那裡成交越多。<b>銅色</b>是成交最密集的價位（{vp["poc"]:,.0f}），'
                    f'<b>深霧藍</b>是 70% 成交量集中的區間（{vp["val"]:,.0f}–{vp["vah"]:,.0f}）。跌破這個區間，代表很多人買在上面、正在虧損，賣壓容易變大。</p>'
-                   f'<div class="vp">{rows}</div>')
+                   + (f'<p class="note2">右欄是<b>台指選擇權</b>近 {o.get("opt_days", 20)} 個交易日在各履約價的成交量（<b style="color:var(--copper)">銅色</b>買權、<b style="color:var(--fogdeep)">霧藍</b>賣權），代表交易員押注的價位。'
+                      + (f'上方買權最熱的是 {o["call_hot"]:,}，' if o.get("call_hot") else "")
+                      + (f'下方賣權最熱的是 {o["put_hot"]:,}。' if o.get("put_hot") else "")
+                      + '期貨和選擇權都很密集的價位，是最重要的支撐或壓力。</p>' if vp.get("opt") else "")
+                   + (f'<div class="vp-h"><span></span><span>台指期成交量</span><span>選擇權成交量</span><span></span></div>' if vp.get("opt") else "")
+                   + f'<div class="vp">{rows}</div>')
     pc = o.get("pc") or []
     stats = ""
     if o.get("oi"):
