@@ -691,7 +691,7 @@ def card(s, i=None):
         n = 1 + (1 if s["dd"] <= -30 else 0) + (1 if (s.get("trust") or 0) > 0.5 or (s.get("foreign") or 0) > 2 else 0)
         badge = f'<span class="gems" title="錯殺指數">{"◆" * n}{"◇" * (3 - n)}</span>'
     rank = f'<span class="no">{i:02d}</span>' if i else ""
-    return f'''<article class="card stock {s["cat"]}">
+    return f'''<article class="card stock {s["cat"]}" data-code="{s["code"]}" data-name="{e(s["name"])}">
   <a class="head" href="https://tw.stock.yahoo.com/quote/{s["code"]}.TW" target="_blank" rel="noopener">
     {rank}<div class="nm"><h3>{e(s["name"])} <em>{s["code"]}</em></h3><div class="ind">{e(s.get("industry", ""))}{flag}</div></div>
     <div class="px"><div class="dd">{s["dd"]:+.1f}<small>%</small></div><div class="p">{s["price"]:,.2f}・距三個月高點</div></div>
