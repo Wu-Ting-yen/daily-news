@@ -200,6 +200,11 @@ def analyse(s, rev, cache, inst, mkt_dd):
         yoy, ytd, ym = num(r["營業收入-去年同月增減(%)"]), num(r["累計營業收入-前期比較增減(%)"]), r["資料年月"]
         mon = int(ym[-2:])
         s.update(industry=r["產業別"], rev_yoy=yoy and round(yoy, 1), rev_ytd=ytd and round(ytd, 1), rev_month=mon)
+        if "金融" in r["產業別"] or "保險" in r["產業別"] or s["code"].startswith("28"):
+            # 金融股的「營收」含投資損益，單月起伏很大，不拿來評分
+            if yoy is not None:
+                reasons.append(("mid", f"{mon} 月營收年增 {yoy:+.1f}%（金融股營收含投資損益，波動大，不計分）"))
+            yoy = ytd = None
         if yoy is not None:
             pts = 2 if yoy >= 20 else 1 if yoy >= 5 else -2 if yoy <= -15 else -1 if yoy <= -5 else 0
             score += pts
@@ -282,7 +287,8 @@ def analyse(s, rev, cache, inst, mkt_dd):
             cheaper = round((1 - rank) * 100)
             if rank <= 0.3:
                 cheap = True
-                reasons.append(("good", f"{what} {val:.1f} 倍，比過去三年 {cheaper}% 的時間都便宜"))
+                reasons.append(("good", f"{what} {val:.1f} 倍，是過去三年最便宜的時候" if cheaper >= 97
+                                else f"{what} {val:.1f} 倍，比過去三年 {cheaper}% 的時間都便宜"))
             elif rank >= 0.8:
                 reasons.append(("bad", f"{what} {val:.1f} 倍，跌完仍在過去三年偏貴的位置"))
             else:
@@ -307,8 +313,10 @@ def analyse(s, rev, cache, inst, mkt_dd):
     s.update(fund=score, flags=flags, cheap=cheap, reasons=reasons)
     if flags or score <= -2:
         s["cat"] = "weak"
+    elif dd <= DROP_LINE and score >= 3 and cheap:
+        s["cat"] = "oversold"   # 跌深、基本面好、而且跌到比過去便宜
     elif dd <= DROP_LINE and score >= 2:
-        s["cat"] = "oversold"
+        s["cat"] = "pricey"     # 基本面沒壞，但估值還不算低（可能是之前漲太多在修正）
     elif score >= 2:
         s["cat"] = "strong"     # 基本面好、跌得不多
     else:
@@ -370,7 +378,7 @@ def card(s, i=None):
     flag = "".join(f'<span class="flag">{e(f)}</span>' for f in s["flags"])
     badge = ""
     if s["cat"] == "oversold":
-        n = 1 + (1 if s["cheap"] else 0) + (1 if (s.get("trust") or 0) > 0.5 or (s.get("foreign") or 0) > 2 else 0)
+        n = 1 + (1 if s["dd"] <= -30 else 0) + (1 if (s.get("trust") or 0) > 0.5 or (s.get("foreign") or 0) > 2 else 0)
         badge = f'<span class="gems" title="錯殺指數">{"◆" * n}{"◇" * (3 - n)}</span>'
     rank = f'<span class="no">{i:02d}</span>' if i else ""
     return f'''<article class="card stock {s["cat"]}">
@@ -387,15 +395,17 @@ def card(s, i=None):
 def render(stocks, mkt, updated, inst_days):
     groups = {
         "oversold": sorted([s for s in stocks if s["cat"] == "oversold"], key=lambda s: -s["rank"]),
+        "pricey": sorted([s for s in stocks if s["cat"] == "pricey"], key=lambda s: -s["rank"]),
         "weak": sorted([s for s in stocks if s["cat"] == "weak"], key=lambda s: s["fund"] * 10 + s["dd"]),
         "others": sorted([s for s in stocks if s["cat"] in ("strong", "mixed")], key=lambda s: (s["cat"] != "strong", -s["fund"], s["dd"])),
     }
     intro = {
-        "oversold": "跌超過 15%，但營收、獲利、毛利率大多還在成長。股價跌可能是被大盤拖累，不是公司本身變差。◆ 越多代表越便宜、法人也在買。",
+        "oversold": "跌超過 15%，但營收、獲利、毛利率大多還在成長，而且現在的本益比比過去三年多數時候都低。股價跌可能是被大盤拖累，不是公司本身變差。◆ 越多代表跌越深、越便宜、法人也在買。",
+        "pricey": "基本面沒變差，也跌超過 15%，但本益比還在過去三年的中間或偏高位置。比較像之前漲太多在修正，不一定算便宜。",
         "weak": "營收或獲利已經在衰退、毛利率變差，或最新一季虧損。這些跌比較「有理由」，抄底要更小心。",
         "others": "基本面好壞參半，或基本面不錯但跌得還不多（抗跌）。",
     }
-    names = {"oversold": "可能錯殺", "weak": "基本面轉弱", "others": "其他"}
+    names = {"oversold": "可能錯殺", "pricey": "跌深・不便宜", "weak": "基本面轉弱", "others": "其他"}
     nav = "".join(f'<button data-tab="{k}">{names[k]}<b>{len(v)}</b></button>' for k, v in groups.items())
     nav += '<button data-tab="how">怎麼判斷</button>'
     body = ""
@@ -431,12 +441,15 @@ HOW = '''<section id="how"><div class="card how">
 <h2>怎麼分類</h2>
 <p>營收、EPS、毛利率每一項做得好加分、變差扣分，加總成「基本面分數」。</p>
 <ul>
-<li><b>可能錯殺</b>：跌超過 {{DROP}}%，基本面分數 ≥ 2，而且沒有紅燈。</li>
+<li><b>可能錯殺</b>：跌超過 {{DROP}}%，基本面分數 ≥ 3，沒有紅燈，而且本益比（或股價淨值比）落在過去三年最便宜的 30% 區間。</li>
+<li><b>跌深・不便宜</b>：跌超過 {{DROP}}%，基本面也還好，但估值不算低。</li>
 <li><b>基本面轉弱</b>：基本面分數 ≤ −2，或亮紅燈（最新一季虧損、單月營收衰退超過 20%、EPS 年減超過 30%）。</li>
 <li><b>其他</b>：好壞參半，或基本面好但還沒跌多少。</li>
 </ul>
 <p>「可能錯殺」的排序，綜合了基本面分數、有多便宜、法人有沒有買、跌了多深。</p>
 <h2>要注意</h2>
+<p>金融股的月營收含投資損益，起伏很大，所以不拿來評分，改看 EPS 和股價淨值比。</p>
+<p>景氣循環股（記憶體、面板、航運、塑化）在獲利最好的時候，本益比會看起來特別低，但那可能是景氣高點，不一定真的便宜。</p>
 <p>財報是落後資料，股價可能已經在反映「下一季會變差」，這是篩選工具看不到的。產業的利空（例如關稅、需求轉弱）也不會出現在過去的數字裡。點進每檔股票，再看新聞和公司說明，才做決定。</p>
 <p class="src">資料來源：臺灣證券交易所 OpenAPI（公開資訊觀測站月營收、收盤、三大法人）、FinMind（每季財報、歷史本益比）、Yahoo 股市（每日股價）。</p>
 <p class="disc">這只是用公開數字做的篩選，不是投資建議。</p>
