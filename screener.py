@@ -352,6 +352,13 @@ def tone(v, good=0):
     return "up" if v > good else "down" if v < good else ""
 
 
+def where(r):
+    if r is None:
+        return ""
+    w = "近3年最低" if r <= 0.05 else "近3年偏低" if r <= 0.3 else "近3年偏高" if r >= 0.7 else "近3年中間"
+    return f" <small>{w}</small>"
+
+
 def card(s, i=None):
     e = html.escape
     chips = []
@@ -366,11 +373,11 @@ def card(s, i=None):
                       tone(s.get("gm_yoy"))))
     if s.get("pe"):
         r = s.get("pe_rank")
-        chips.append(("本益比", f"{s['pe']:.1f}" + (f" <small>近3年{round(r * 100)}分位</small>" if r is not None else ""),
+        chips.append(("本益比", f"{s['pe']:.1f}" + where(r),
                       "up" if r is not None and r <= 0.3 else "down" if r is not None and r >= 0.8 else ""))
     elif s.get("pb"):
         r = s.get("pb_rank")
-        chips.append(("股價淨值比", f"{s['pb']:.2f}" + (f" <small>近3年{round(r * 100)}分位</small>" if r is not None else ""),
+        chips.append(("股價淨值比", f"{s['pb']:.2f}" + where(r),
                       "up" if r is not None and r <= 0.3 else ""))
     chip_html = "".join(f'<div class="chip {t}"><span>{a}</span><b>{b}</b></div>' for a, b, t in chips)
     marks = {"good": "○", "bad": "×", "mid": "·"}
@@ -386,7 +393,7 @@ def card(s, i=None):
     {rank}<div class="nm"><h3>{e(s["name"])} <em>{s["code"]}</em></h3><div class="ind">{e(s.get("industry", ""))}{flag}</div></div>
     <div class="px"><div class="dd">{s["dd"]:+.1f}<small>%</small></div><div class="p">{s["price"]:,.2f}・距三個月高點</div></div>
   </a>
-  <div class="mid">{spark_svg(s["spark"])}{badge}</div>
+  <div class="sk">{spark_svg(s["spark"])}{badge}</div>
   <div class="chips">{chip_html}</div>
   <details><summary>為什麼這樣判斷</summary><ul class="why">{rs}</ul></details>
 </article>'''
@@ -400,7 +407,7 @@ def render(stocks, mkt, updated, inst_days):
         "others": sorted([s for s in stocks if s["cat"] in ("strong", "mixed")], key=lambda s: (s["cat"] != "strong", -s["fund"], s["dd"])),
     }
     intro = {
-        "oversold": "跌超過 15%，但營收、獲利、毛利率大多還在成長，而且現在的本益比比過去三年多數時候都低。股價跌可能是被大盤拖累，不是公司本身變差。◆ 越多代表跌越深、越便宜、法人也在買。",
+        "oversold": "跌超過 15%，但營收、獲利、毛利率大多還在成長，而且現在的本益比比過去三年多數時候都低。股價跌可能是被大盤拖累，不是公司本身變差。◆ 越多代表跌得越深、法人也在買進。",
         "pricey": "基本面沒變差，也跌超過 15%，但本益比還在過去三年的中間或偏高位置。比較像之前漲太多在修正，不一定算便宜。",
         "weak": "營收或獲利已經在衰退、毛利率變差，或最新一季虧損。這些跌比較「有理由」，抄底要更小心。",
         "others": "基本面好壞參半，或基本面不錯但跌得還不多（抗跌）。",
@@ -410,7 +417,10 @@ def render(stocks, mkt, updated, inst_days):
     nav += '<button data-tab="how">怎麼判斷</button>'
     body = ""
     for k, v in groups.items():
-        cards = "".join(card(s, i + 1 if k == "oversold" else None) for i, s in enumerate(v))
+        cs = [card(s, i + 1 if k == "oversold" else None) for i, s in enumerate(v)]
+        cards = "".join(cs[:15])
+        if len(cs) > 15:
+            cards += f'<details class="more"><summary>再看其餘 {len(cs) - 15} 檔</summary>{"".join(cs[15:])}</details>'
         body += f'<section id="{k}"><p class="lead">{intro[k]}</p>{cards or "<p class=empty>今天沒有符合的股票</p>"}</section>'
     body += HOW.replace("{{DROP}}", str(int(-DROP_LINE))).replace("{{INST}}", "、".join(d[5:].replace("-", "/") for d in inst_days) or "—")
     n_drop = sum(1 for s in stocks if s["dd"] <= DROP_LINE)
