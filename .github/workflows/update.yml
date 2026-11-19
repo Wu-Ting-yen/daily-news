@@ -1,5 +1,8 @@
 name: 更新新聞
 
+# GitHub 的排程（schedule）對新專案常常不觸發，所以改成「接力」：
+# 每次執行會持續工作約 5 小時 40 分，每 15 分鐘更新一次，結束前自己再啟動下一棒。
+# 排程保留當備援：接力斷掉時，排程一跑就會重新接上。
 on:
   schedule:
     - cron: "7,22,37,52 * * * *"
@@ -7,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: update-news
@@ -15,20 +19,34 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: 抓新聞、更新網頁、推播
+      - name: 每 15 分鐘抓新聞、更新網頁、推播
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PAGE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-        run: python update.py
-      - name: 儲存
         run: |
           git config user.name "news-bot"
           git config user.email "news-bot@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet || (git commit -m "更新新聞 $(TZ=Asia/Taipei date '+%m/%d %H:%M')" && git push)
+          end=$(( $(date +%s) + 340*60 ))
+          while :; do
+            git pull -q --rebase || true
+            python update.py || echo "update failed"
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -qm "更新新聞 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
+              for i in 1 2 3; do git push -q && break || git pull -q --rebase; done
+            fi
+            [ $(( $(date +%s) + 15*60 )) -lt $end ] || break
+            sleep $(( 15*60 ))
+          done
+      - name: 啟動下一棒
+        if: success() || failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run update.yml --ref main -R ${{ github.repository }}
