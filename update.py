@@ -2,6 +2,7 @@
 """抓新聞 → 更新網頁 → 有重大消息就推播到 Telegram。只用 Python 內建模組。"""
 import html
 import json
+import math
 import os
 import re
 import sys
@@ -70,7 +71,63 @@ def fetch(sec):
 
 
 def norm(t):
-    return re.sub(r"\W+", "", t.lower())[:40]
+    return re.sub(r"\W+", "", t.lower())
+
+
+STOP = set("即時 新聞 美股 台股 快訊 最新 一次 今日 今天 明天 美元 億元 市場 投資 股價 公司 表示 宣布 財經 全球 國際 日報".split())
+
+
+def tokens(t):
+    t = re.sub(r"【[^】]*】", "", t)
+    en = {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9]+", t)}
+    zh = set()
+    for seg in re.findall(r"[\u4e00-\u9fff]+", t):
+        zh |= {seg[i:i + 2] for i in range(len(seg) - 1)}
+    return (en | zh) - STOP
+
+
+def cluster(items, threshold=0.18):
+    """把講同一件事的新聞歸成一組。回傳 [[最早那則, 後續報導...], ...]"""
+    items = sorted(items, key=lambda x: x["time"])
+    toks = [tokens(i["title"]) for i in items]
+    n = max(1, len(items))
+    df = {}
+    for t in toks:
+        for x in t:
+            df[x] = df.get(x, 0) + 1
+
+    def w(x):  # 越少見的詞越重要；英文名稱（公司、代號）加重
+        return math.log(n / df[x]) * (1.5 if x.isascii() else 1)
+
+    def weight(t):
+        return sum(w(x) for x in t)
+
+    groups = []  # {"m": members, "t": [(tokens, weight)]}
+    for it, tk in zip(items, toks):
+        wt = weight(tk)
+        best, best_sc = None, 0
+        for g in groups:
+            for mt, mw in g["t"][-4:]:
+                sc = weight(tk & mt) / max(1e-9, (wt * mw) ** 0.5)
+                if sc > best_sc:
+                    best, best_sc = g, sc
+        if best and best_sc >= threshold:
+            best["m"].append(it)
+            best["t"].append((tk, wt))
+        else:
+            groups.append({"m": [it], "t": [(tk, wt)]})
+    # 第二輪：標題都提到同一個少見的英文名稱（例如 Anthropic、SpaceX）就併成同一個話題
+    merged, by_name = [], {}
+    for g in groups:
+        names = {x for x in g["t"][0][0] if x.isascii() and len(x) >= 4 and 3 <= df[x] <= n * 0.12}
+        target = next((by_name[x] for x in sorted(names) if x in by_name), None)
+        if target is None:
+            target = []
+            merged.append(target)
+            for x in names:
+                by_name[x] = target
+        target.extend(g["m"])
+    return [sorted(m, key=lambda x: x["time"]) for m in merged]
 
 
 def send_telegram(text):
@@ -113,17 +170,32 @@ def find_chat_id():
 
 
 def render(cfg, store, updated):
+    groups = cluster(list(store.values()))
+    newest = lambda g: max(x["time"] for x in g)
+    groups.sort(key=newest, reverse=True)
+    alerts = [g for g in groups if any(x.get("alert") for x in g)][:15]
+    shown = {id(g) for g in alerts}
     by_sec = {s["id"]: [] for s in cfg["sections"]}
-    for it in sorted(store.values(), key=lambda x: x["time"], reverse=True):
-        if it["section"] in by_sec and len(by_sec[it["section"]]) < cfg["max_items_per_section"]:
-            by_sec[it["section"]].append(it)
-    alerts = sorted([i for i in store.values() if i.get("alert_main")], key=lambda x: x["time"], reverse=True)[:15]
+    for g in groups:
+        sec = g[0]["section"]
+        if id(g) not in shown and sec in by_sec and len(by_sec[sec]) < cfg["max_items_per_section"]:
+            by_sec[sec].append(g)
 
-    def card(it):
+    def card(g):
+        g = sorted(g, key=lambda x: x["time"], reverse=True)
+        it = g[0]
         t = datetime.fromisoformat(it["time"]).strftime("%m/%d %H:%M")
-        return (f'<li><a href="{html.escape(it["link"])}" target="_blank" rel="noopener">'
-                f'<span class="t">{html.escape(it["title"])}</span>'
-                f'<span class="m">{html.escape(it["source"])} · {t} · 閱讀原文 ›</span></a></li>')
+        out = (f'<li><a href="{html.escape(it["link"])}" target="_blank" rel="noopener">'
+               f'<span class="t">{html.escape(it["title"])}</span>'
+               f'<span class="m">{html.escape(it["source"])} · {t} · 閱讀原文 ›</span></a>')
+        if len(g) > 1:
+            out += f'<details><summary>相關報導 {len(g) - 1} 則</summary>'
+            for x in g[1:]:
+                out += (f'<a class="rel" href="{html.escape(x["link"])}" target="_blank" rel="noopener">'
+                        f'{html.escape(x["title"])}<span class="m">{html.escape(x["source"])} · '
+                        f'{datetime.fromisoformat(x["time"]).strftime("%m/%d %H:%M")}</span></a>')
+            out += "</details>"
+        return out + "</li>"
 
     nav = "".join(f'<a href="#{s["id"]}">{html.escape(s["name"])}</a>' for s in cfg["sections"])
     body = ""
@@ -146,33 +218,37 @@ def main():
     first_run = not store
     now = datetime.now(TPE)
     cutoff = now - timedelta(days=cfg.get("keep_days", 3))
-    seen_titles = {(i["section"], norm(i["title"])) for i in store.values()}
-    alerted = {norm(i["title"]) for i in store.values() if i.get("alert")}
     kws = [k.lower() for k in cfg.get("alert_keywords", [])]
-    new_alerts = []
+    block = cfg.get("block_sources", [])
+    titles = {norm(v["title"]) for v in store.values()}
+    old_ids = set(store)
 
-    for sec in cfg["sections"]:
+    # 先處理特定主題（IPO、太空…），再處理一般分類；完全相同的標題只留一則
+    ordered = [s for s in cfg["sections"] if "query" in s] + [s for s in cfg["sections"] if "query" not in s]
+    for sec in ordered:
         try:
             items = fetch(sec)
         except Exception as e:
             print(f"[{sec['id']}] 抓取失敗: {e}", file=sys.stderr)
             continue
         for it in items:
-            key = sec["id"] + "|" + it["id"]
-            if datetime.fromisoformat(it["time"]) < cutoff or key in store:
-                continue
             nt = norm(it["title"])
-            if (sec["id"], nt) in seen_titles:  # 同一區塊內相同新聞只留一則
+            if (datetime.fromisoformat(it["time"]) < cutoff or it["id"] in store or nt in titles
+                    or any(b in it["title"] or b in it["source"] for b in block)):
                 continue
-            seen_titles.add((sec["id"], nt))
+            titles.add(nt)
             if any(k in it["title"].lower() for k in kws):
                 it["alert"] = True
-                if nt not in alerted:  # 同一則快訊只推播一次、重大快訊區只列一次
-                    alerted.add(nt)
-                    it["alert_main"] = True
-                    if not first_run and datetime.fromisoformat(it["time"]) > now - timedelta(hours=6):
-                        new_alerts.append(it)
-            store[key] = it
+            store[it["id"]] = it
+
+    # 只有「全新的事件」才推播；同一件事後續的報導不再重複通知
+    new_alerts = []
+    if not first_run:
+        for g in cluster([v for v in store.values() if datetime.fromisoformat(v["time"]) >= cutoff]):
+            lead = g[0]
+            if (lead["id"] not in old_ids and lead.get("alert")
+                    and datetime.fromisoformat(lead["time"]) > now - timedelta(hours=6)):
+                new_alerts.append(lead)
 
     store = {k: v for k, v in store.items() if datetime.fromisoformat(v["time"]) >= cutoff}
     save("data/news.json", store)
