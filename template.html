@@ -69,6 +69,10 @@ nav button{flex:none;border:1px solid var(--line);border-radius:999px;padding:6p
   font:500 14px "Noto Sans TC",sans-serif;color:var(--fogdeep);background:#ffffff8c;display:flex;gap:6px;align-items:center;
   backdrop-filter:blur(6px)}
 @media (prefers-color-scheme:dark){nav button{background:#ffffff0d}}
+nav .navlink{flex:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;
+  font:500 14px "Noto Sans TC",sans-serif;color:var(--copper);background:#ffffff8c;display:flex;gap:6px;align-items:center;backdrop-filter:blur(6px)}
+@media (prefers-color-scheme:dark){nav .navlink{background:#ffffff0d}}
+nav .navlink::before{content:"";width:8px;height:8px;border-radius:2px 4px 3px 5px;background:var(--copper);transform:rotate(18deg)}
 nav button b{font:600 13px "Cormorant Garamond",serif;color:var(--sub)}
 nav button.on{color:#fff;border-color:transparent;
   background:linear-gradient(180deg,#ffffff30,#ffffff00),repeating-linear-gradient(90deg,var(--fog) 0 10px,#9fb2c3 10px 17px);
@@ -139,7 +143,7 @@ details.others{margin-top:22px;border:1px dashed var(--line);border-radius:16px;
   </div>
   <div class="stripe"></div>
 </header>
-<div class="navwrap"><nav>{{NAV}}</nav></div>
+<div class="navwrap"><nav>{{NAV}}<a class="navlink" href="stocks.html">錯殺股 ↗</a></nav></div>
 <main>{{BODY}}</main>
 <button id="totop" aria-label="回到頂端">↑</button>
 <script>
