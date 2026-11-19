@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>美股分析</title>
+<meta name="theme-color" content="#ecebe6">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* 米白灰泥 × 霧藍 × 銅 */
+  --plaster:#ecebe6;--plaster2:#e2e0d9;--card:#fbfaf7e6;--text:#2b3440;--sub:#7c8590;--line:#d9d7cf;
+  --fog:#8ea3b6;--fog2:#b9c7d4;--fogdeep:#5f7487;--copper:#8b5a3c;--copper2:#b07a55;
+  --shadow:0 1px 1px #3a33280a,0 6px 18px #3a33280f;
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .33 0 0 0 0 .3 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --stucco:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.045' numOctaves='4' seed='7'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='2.2'%3E%3CfeDistantLight azimuth='225' elevation='52'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme:dark){:root{
+  --plaster:#1d2127;--plaster2:#171a1f;--card:#252a31e6;--text:#e7e4dc;--sub:#9aa1a9;--line:#343a43;
+  --fog:#7f95a9;--fog2:#4a5a6a;--fogdeep:#a9bccd;--copper:#c98f66;--copper2:#d9a47e;--shadow:none;
+}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;color:var(--text);background:var(--plaster);
+  font-family:"Noto Sans TC",-apple-system,"PingFang TC",sans-serif;font-size:16px;line-height:1.6;letter-spacing:.02em}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--grain);opacity:.18;pointer-events:none}
+
+/* 頂部：灰泥牆浮雕 + 霧藍果凍條紋 */
+.navwrap{position:sticky;top:0;z-index:5;padding-top:env(safe-area-inset-top);
+  background:var(--stucco) center/300px,var(--plaster);background-blend-mode:multiply;box-shadow:0 1px 0 var(--line),0 8px 20px -12px #3a332833}
+@media (prefers-color-scheme:dark){.navwrap{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
+.panel{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 14px}
+.wx,.fx{border-radius:16px;padding:12px 14px;background:#ffffff8f;border:1px solid #ffffffb0;backdrop-filter:blur(6px);
+  box-shadow:0 4px 14px -8px #3a332840;min-width:0}
+@media (prefers-color-scheme:dark){.wx,.fx{background:#ffffff10;border-color:#ffffff18}}
+.lbl{font-size:12px;color:var(--fogdeep);letter-spacing:.08em}
+.now{display:flex;align-items:center;gap:8px;margin:2px 0}
+.ico{font-size:26px;line-height:1}
+.now .t small{font:500 14px 'Noto Sans TC',sans-serif;color:var(--sub);vertical-align:top;margin-left:2px}
+.now .t{font:600 34px/1.1 "Cormorant Garamond",serif;color:var(--text)}
+.sub{font-size:12.5px;color:var(--sub);line-height:1.5}
+.stars{color:var(--copper);font-size:17px;letter-spacing:2px;margin:4px 0 2px}
+.stars span{font-size:12px;color:var(--sub);letter-spacing:0;margin-left:4px}
+.note{font:500 13px/1.5 "Noto Serif TC",serif;color:var(--text);margin-top:4px}
+header.hero{padding-top:env(safe-area-inset-top);
+  background:var(--stucco) center/300px,var(--plaster);background-blend-mode:multiply;
+  box-shadow:0 1px 0 var(--line),0 8px 20px -12px #3a332833}
+@media (prefers-color-scheme:dark){header.hero{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
+.top{display:flex;align-items:flex-end;justify-content:space-between;padding:16px 20px 12px}
+.brand{display:flex;flex-direction:column;line-height:1.1}
+.brand small{font:600 12px "Cormorant Garamond",serif;letter-spacing:.38em;color:var(--fogdeep);margin-bottom:6px}
+h1{margin:0;font:700 26px "Noto Serif TC",serif;letter-spacing:.12em;color:var(--text)}
+h1 i{font-style:normal;color:var(--copper)}
+.upd{font:500 12px "Cormorant Garamond","Noto Sans TC",serif;color:var(--sub);letter-spacing:.06em;text-align:right}
+.stripe{height:6px;background:repeating-linear-gradient(90deg,var(--fog) 0 14px,var(--fog2) 14px 22px,#6f7f8f 22px 23px,var(--fog2) 23px 34px);opacity:.75}
+nav{display:flex;gap:8px;overflow-x:auto;padding:12px 16px;scrollbar-width:none;
+  background:linear-gradient(180deg,#ffffff55,#ffffff00)}
+@media (prefers-color-scheme:dark){nav{background:none}}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer;
+  font:500 14px "Noto Sans TC",sans-serif;color:var(--fogdeep);background:#ffffff8c;display:flex;gap:6px;align-items:center;
+  backdrop-filter:blur(6px)}
+@media (prefers-color-scheme:dark){nav button{background:#ffffff0d}}
+nav button b{font:600 13px "Cormorant Garamond",serif;color:var(--sub)}
+nav button.on{color:#fff;border-color:transparent;
+  background:linear-gradient(180deg,#ffffff30,#ffffff00),repeating-linear-gradient(90deg,var(--fog) 0 10px,#9fb2c3 10px 17px);
+  box-shadow:inset 0 1px 0 #ffffff60,0 3px 10px -4px var(--fogdeep)}
+nav button.on b{color:#ffffffd0}
+nav button[data-tab=overview]::before{content:"";width:8px;height:8px;border-radius:2px 4px 3px 5px;background:var(--copper);transform:rotate(18deg)}
+
+
+main{max-width:720px;margin:0 auto;padding:16px 16px calc(48px + env(safe-area-inset-bottom))}
+section{display:none}
+section.on{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+a{color:inherit;text-decoration:none}
+.back{font:500 12.5px "Noto Sans TC",sans-serif;color:var(--fogdeep);border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:#ffffff8c;white-space:nowrap}
+@media (prefers-color-scheme:dark){.back{background:#ffffff0d}}
+.mk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 16px 14px}
+.mk>div{border-radius:14px;padding:10px 12px;background:#ffffff8f;border:1px solid #ffffffb0;backdrop-filter:blur(6px);box-shadow:0 4px 14px -8px #3a332840;min-width:0}
+@media (prefers-color-scheme:dark){.mk>div{background:#ffffff10;border-color:#ffffff18}}
+.mk b{display:block;font:600 26px/1.15 "Cormorant Garamond",serif;color:var(--text);margin-top:2px}
+.mk small{font-size:12px;color:var(--sub)}
+.up{color:#b0453a!important}.down{color:#3f7a5a!important}
+.lead{font:500 14px/1.7 "Noto Serif TC",serif;color:var(--sub);margin:4px 2px 14px}
+.card{background:var(--card);backdrop-filter:blur(4px);border-radius:18px;box-shadow:var(--shadow);
+  border:1px solid #ffffffaa;margin-bottom:12px;overflow:hidden;position:relative}
+@media (prefers-color-scheme:dark){.card{border-color:var(--line)}}
+.stock .head{display:flex;align-items:flex-start;gap:12px;padding:16px 18px 4px}
+.stock .no{font:600 15px "Cormorant Garamond",serif;color:var(--copper);padding-top:3px;min-width:20px}
+.nm{flex:1;min-width:0}
+.nm h3{margin:0;font:700 17px/1.4 "Noto Serif TC",serif;letter-spacing:.06em}
+.nm h3 em{font:600 14px "Cormorant Garamond",serif;font-style:normal;color:var(--sub);letter-spacing:.04em;margin-left:2px}
+.ind{font-size:12.5px;color:var(--fogdeep);margin-top:2px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.flag{font-size:11.5px;color:#fff;background:#a5574a;border-radius:6px;padding:0 6px;line-height:1.7}
+.px{text-align:right;flex:none}
+.dd{font:600 30px/1 "Cormorant Garamond",serif;color:var(--copper)}
+.dd small{font-size:16px;margin-left:1px}
+.p{font-size:11.5px;color:var(--sub);margin-top:4px}
+.sk{display:flex;align-items:center;justify-content:space-between;padding:4px 18px 8px;color:var(--fogdeep)}
+.spark{width:150px;height:36px;overflow:visible}
+.spark .hi{fill:var(--copper)}
+.gems{color:var(--copper);font-size:14px;letter-spacing:3px}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;padding:0 18px 14px}
+.chip{border:1px solid var(--line);border-radius:12px;padding:6px 10px;background:#ffffff70;min-width:0}
+@media (prefers-color-scheme:dark){.chip{background:#ffffff08}}
+.chip span{display:block;font-size:11.5px;color:var(--sub)}
+.chip b{font:600 15px "Noto Sans TC",sans-serif;color:var(--text)}
+.chip.up b{color:#b0453a}.chip.down b{color:#3f7a5a}
+.chip small{font-size:11px;color:var(--sub);font-weight:400}
+details{border-top:1px solid var(--line)}
+summary{list-style:none;padding:11px 18px;font-size:13px;color:var(--sub);cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"＋";color:var(--copper);font-size:15px}
+details[open] summary::after{content:"－"}
+.why{list-style:none;margin:0;padding:0 18px 14px}
+.why li{display:flex;gap:10px;font-size:14px;padding:5px 0;line-height:1.55}
+.why li+li{border-top:1px dashed var(--line)}
+.why i{font-style:normal;flex:none;width:14px;text-align:center;font-weight:700}
+.why .good i{color:#b0453a}.why .bad i{color:#3f7a5a}.why .mid i{color:var(--sub)}
+.stock.weak .dd{color:var(--fogdeep)}
+.how{padding:18px 20px}
+.how h2{font:700 17px "Noto Serif TC",serif;letter-spacing:.08em;margin:18px 0 6px;color:var(--text)}
+.how h2:first-child{margin-top:0}
+.how h2::before{content:"";display:inline-block;width:9px;height:8px;border-radius:2px 4px 3px 5px;background:var(--copper);transform:rotate(18deg);margin-right:8px;vertical-align:2px}
+.how p,.how li{font-size:14.5px;line-height:1.8}
+.how ol,.how ul{padding-left:20px;margin:6px 0}
+.how .src{font-size:12.5px;color:var(--sub)}
+.disc{font:500 13.5px "Noto Serif TC",serif;color:var(--copper);border-top:1px dashed var(--line);padding-top:10px}
+details.more{border:1px dashed var(--line);border-radius:16px;padding:0 0 4px;margin-top:6px}
+details.more>summary{font-size:14px;color:var(--fogdeep)}
+details.more[open]>summary{margin-bottom:8px}
+details.more .card{margin:0 8px 12px}
+.streak,.tag{font-size:11.5px;color:#fff;background:var(--fogdeep);border-radius:6px;padding:0 6px;line-height:1.7}
+.sig.oversold .tag{background:var(--copper)}.sig.weak .tag{background:#a5574a}
+.sig .ind{gap:8px}
+.dt{padding:4px 18px 14px}
+.dt h4{margin:6px 0 8px;font:700 13px "Noto Serif TC",serif;color:var(--fogdeep);letter-spacing:.06em}
+.bars{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;align-items:end}
+.bar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-height:66px}
+.bar i{display:block;width:60%;max-width:22px;border-radius:4px 4px 2px 2px}
+.bar i.pos{background:linear-gradient(180deg,var(--copper2),var(--copper))}
+.bar i.neg{background:linear-gradient(180deg,#9fb2c3,var(--fog))}
+.bar b{font:600 11.5px "Noto Sans TC",sans-serif;margin-top:3px;color:var(--text)}
+.bar span{font-size:11px;color:var(--sub)}
+.dt table{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+.dt th,.dt td{padding:5px 2px;text-align:center;border-bottom:1px dashed var(--line);font-weight:500}
+.dt th{color:var(--sub);font-weight:400}
+.dt tr th:first-child{text-align:left;width:52px}
+.navlink{flex:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font:500 14px "Noto Sans TC",sans-serif;color:var(--copper);background:#ffffff8c;display:flex;align-items:center;backdrop-filter:blur(6px)}
+@media (prefers-color-scheme:dark){.navlink{background:#ffffff0d}}
+.ov{padding:16px 18px}
+.ov h2{margin:0 0 6px;font:700 17px "Noto Serif TC",serif;letter-spacing:.08em}
+.ov h2::before{content:"";display:inline-block;width:9px;height:8px;border-radius:2px 4px 3px 5px;background:var(--copper);transform:rotate(18deg);margin-right:8px;vertical-align:2px}
+.note2{font-size:13.5px;line-height:1.7;color:var(--sub);margin:0 0 12px}
+.note2 b{color:var(--text)}
+.seg{display:flex;height:16px;border-radius:8px;overflow:hidden;gap:2px}
+.seg a{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:13px;color:var(--text)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.map{width:100%;height:auto;display:block}
+.map .zone.good{fill:var(--copper);opacity:.08}.map .zone.bad{fill:#a5574a;opacity:.06}
+.map .rule{stroke:var(--line);stroke-dasharray:3 3}
+.map .ax{font:500 10px "Noto Sans TC",sans-serif;fill:var(--sub)}
+.map .zl{font:700 11px "Noto Serif TC",serif;fill:var(--copper);letter-spacing:.1em}
+.map .zl.bad{fill:#a5574a}.map .zl.mute{fill:var(--sub)}
+.map circle{stroke:var(--card);stroke-width:1;cursor:pointer;opacity:.9}
+.map circle.on{stroke:var(--text);stroke-width:2}
+.map .lb text{font:500 10px "Noto Sans TC",sans-serif;fill:var(--text);paint-order:stroke;stroke:var(--plaster);stroke-width:3px;pointer-events:none}
+.tip{font-size:13px;color:var(--fogdeep);margin:8px 0 0;min-height:20px;text-align:center}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.duo .card{margin-bottom:12px}
+.mini{list-style:none;margin:6px 0 0;padding:0;counter-reset:m}
+.mini li{counter-increment:m}
+.mini a{display:flex;align-items:baseline;gap:6px;padding:7px 0;border-top:1px dashed var(--line);font-size:14px}
+.mini li:first-child a{border-top:0}
+.mini a::before{content:counter(m);font:600 13px "Cormorant Garamond",serif;color:var(--copper);width:12px}
+.mini b{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mini em{font:600 12px "Cormorant Garamond",serif;font-style:normal;color:var(--sub)}
+.mini span{margin-left:auto;font:600 15px "Cormorant Garamond",serif;color:var(--copper)}
+.mini.weak a::before,.mini.weak span{color:#a5574a}
+.ind-t{width:100%;border-collapse:collapse;font-size:13.5px}
+.ind-t th,.ind-t td{padding:7px 4px;border-top:1px dashed var(--line);text-align:left;font-weight:500;vertical-align:middle}
+.ind-t tr:first-child th{border-top:0;color:var(--sub);font-size:12px;font-weight:400}
+.ind-t th small{display:block;font-size:11px;color:var(--sub);font-weight:400}
+.ind-t td{white-space:nowrap}
+.ind-t td b{font:600 14px "Cormorant Garamond",serif;margin-left:6px}
+.hb{display:inline-block;width:70px;height:6px;border-radius:3px;background:var(--plaster2);vertical-align:middle;overflow:hidden}
+.hb i{display:block;height:100%;background:linear-gradient(90deg,var(--copper2),var(--copper))}
+.ind-t .c{color:var(--copper);text-align:center;font-weight:700}.ind-t .w{color:#a5574a;text-align:center;font-weight:700}
+@media (max-width:360px){.duo{grid-template-columns:1fr}}
+.oi-h{display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin:4px 0 6px}
+.oi{display:flex;flex-direction:column;gap:3px}
+.oi-r{display:grid;grid-template-columns:1fr 64px 1fr;align-items:center;gap:6px}
+.oi-r .l,.oi-r .r{position:relative;height:14px}
+.oi-r i{position:absolute;top:0;height:10px;border-radius:3px}
+.oi-r i.v{top:11px;height:2px;border-radius:1px;opacity:.9}
+.oi-r .l i{right:0;background:linear-gradient(270deg,#9fb2c3,var(--fog))}
+.oi-r .l i.v{background:var(--fogdeep)}
+.oi-r .r i{left:0;background:linear-gradient(90deg,var(--copper2),var(--copper))}
+.oi-r .r i.v{background:#6b4128}
+.oi-r .k{text-align:center;font:600 13px "Cormorant Garamond",serif;color:var(--text)}
+.oi-r .k em{font:700 10px "Noto Sans TC",sans-serif;font-style:normal;color:#fff;background:var(--copper);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:1px}
+.oi-now{position:relative;text-align:center;margin:3px 0;border-top:1.5px dashed var(--copper)}
+.oi-now span{position:relative;top:-9px;background:var(--card);padding:0 8px;font-size:11.5px;color:var(--copper);font-weight:700}
+.pcbox{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);color:var(--fogdeep)}
+.pcbox b{display:block;font:600 24px "Cormorant Garamond",serif;color:var(--text)}
+.pcbox small{font-size:12px;color:var(--sub)}
+.pcbox .spark{width:120px;height:30px}
+.hedge{display:flex;align-items:baseline;justify-content:space-between;border-radius:14px;padding:12px 16px;margin:6px 0 10px;background:var(--plaster2)}
+.hedge b{font:700 22px "Noto Serif TC",serif;letter-spacing:.12em}
+.hedge span{font-size:12.5px;color:var(--sub)}
+.hedge.red{background:#a5574a1f}.hedge.red b{color:#a5574a}
+.hedge.amber{background:#b07a5524}.hedge.amber b{color:var(--copper)}
+.hedge.calm{background:#8ea3b626}.hedge.calm b{color:var(--fogdeep)}
+.hwhy{margin:0 0 12px;padding-left:18px;font-size:13.5px;line-height:1.7}
+.ostats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.ostats>div{border:1px solid var(--line);border-radius:12px;padding:8px 10px;color:var(--fogdeep);min-width:0}
+.ostats b{display:block;font:600 22px "Cormorant Garamond",serif;color:var(--text)}
+.ostats small{font-size:11.5px;color:var(--sub)}
+.ostats .spark{width:100%;height:26px;margin-top:4px}
+.sub3{font:700 14.5px "Noto Serif TC",serif;margin:16px 0 4px;color:var(--fogdeep);letter-spacing:.06em}
+.vp{display:flex;flex-direction:column;gap:2px}
+.vp-r{display:grid;grid-template-columns:56px 1fr 52px;align-items:center;gap:8px;font-size:11.5px}
+.vp-r span{text-align:right;font:600 12.5px "Cormorant Garamond",serif;color:var(--sub)}
+.vp-r div{height:11px}
+.vp-r i{display:block;height:100%;border-radius:2px 4px 4px 2px;background:var(--fog2)}
+.vp-r i.va{background:var(--fog)}
+.vp-r i.poc{background:linear-gradient(90deg,var(--copper2),var(--copper))}
+.vp-r em{font-style:normal;color:var(--copper);font-weight:700;font-size:11px;white-space:nowrap}
+.vp-r.here span{color:var(--copper)}
+.vp-r.sm div{height:8px}
+.vp-r.two{grid-template-columns:52px 1fr 1fr 44px}
+.vp-r .ob{display:flex;flex-direction:column;justify-content:center;gap:1px}
+.vp-r .ob i{height:5px;border-radius:2px}
+.vp-r .ob i.c{background:var(--copper2)}.vp-r .ob i.p{background:var(--fogdeep)}
+.vp-h{display:grid;grid-template-columns:52px 1fr 1fr 44px;gap:8px;font-size:11px;color:var(--sub);margin-bottom:4px}
+.foot{text-align:center;font-size:12px;color:var(--sub);margin-top:20px}
+.empty{color:var(--sub);text-align:center;padding:48px 0}
+.sbox{margin:14px 0 4px;position:relative}
+.sbox input{width:100%;box-sizing:border-box;font:500 15px "Noto Sans TC",sans-serif;color:var(--text);
+  padding:11px 40px 11px 40px;border:1px solid var(--line);border-radius:999px;background:var(--card);box-shadow:var(--shadow);
+  -webkit-appearance:none;appearance:none;outline:none}
+.sbox input:focus{border-color:var(--fog);box-shadow:0 0 0 3px #8ea3b633}
+.sbox input::placeholder{color:var(--sub)}
+.sbox input::-webkit-search-cancel-button{display:none}
+.sbox .ico{position:absolute;left:15px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--fogdeep);pointer-events:none}
+.sbox .clr{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--sub);font-size:18px;
+  width:30px;height:30px;border-radius:50%;cursor:pointer;display:none}
+.sbox.has .clr{display:block}
+#sres{display:none}
+main.searching section{display:none!important}
+main.searching #sres{display:block}
+.shint{font:500 12.5px/1.6 "Noto Sans TC",sans-serif;color:var(--sub);margin:10px 4px}
+.shint b{color:var(--copper);font-weight:600}
+.smiss{padding:16px 18px;border:1px dashed var(--line);border-radius:14px;background:var(--card);font-size:14px;line-height:1.7}
+.smiss a{color:var(--fogdeep)}
+#totop{position:fixed;right:18px;bottom:calc(22px + env(safe-area-inset-bottom));width:46px;height:46px;border-radius:50%;
+  border:1px solid #ffffff90;color:#fff;font-size:18px;cursor:pointer;
+  background:repeating-linear-gradient(90deg,var(--fog) 0 8px,#9fb2c3 8px 14px);
+  box-shadow:0 6px 16px -6px var(--fogdeep);opacity:0;pointer-events:none;transition:.25s}
+#totop.show{opacity:1;pointer-events:auto}
+@media (max-width:380px){.mk b{font-size:22px}.dd{font-size:26px}}
+
+.state{font-size:11.5px;color:#fff;border-radius:6px;padding:0 7px;line-height:1.75}
+.state.good{background:var(--fogdeep)}.state.mid{background:var(--copper)}.state.bad{background:#a5574a}
+.stock.bad .dd{color:#a5574a}
+details.full{border-top:1px solid var(--line)}
+.dt h4{margin:16px 0 6px}
+.floors{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.fr{display:grid;grid-template-columns:auto 1fr auto auto;gap:2px 10px;align-items:baseline;border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:#ffffff60}
+@media (prefers-color-scheme:dark){.fr{background:#ffffff08}}
+.fr.first{border-color:var(--copper2);background:#b07a5514}
+.fr b{font:700 13px "Noto Serif TC",serif;color:var(--fogdeep)}
+.fr .rg{font:600 18px "Cormorant Garamond",serif;color:var(--text)}
+.fr .st{color:var(--copper);letter-spacing:1px;font-size:13px}
+.fr .ds{font-size:12px;color:var(--sub)}
+.fr small{grid-column:1/-1;font-size:12px;color:var(--sub);line-height:1.5}
+.pchart,.term{width:100%;height:auto;display:block;margin:6px 0 2px;color:var(--fogdeep)}
+.pchart .pl,.term .tl{fill:none;stroke:var(--fogdeep);stroke-width:1.6;stroke-linejoin:round}
+.pchart .pd{fill:var(--copper)}
+.pchart .fz{fill:var(--copper);opacity:.22}.pchart .fz.f1{opacity:.11}
+.pchart .cw{stroke:#a5574a;stroke-dasharray:4 3;stroke-width:1}
+.pchart .fl{font:700 10px "Noto Sans TC",sans-serif;fill:var(--copper)}.pchart .cwl{fill:#a5574a}
+.pchart .ax,.term .ax{font:500 9.5px "Noto Sans TC",sans-serif;fill:var(--sub)}
+.term .g{stroke:var(--line);stroke-dasharray:2 3}
+.term .tp{fill:none;stroke:var(--sub);stroke-width:1.2;stroke-dasharray:3 3;opacity:.8}
+.term .td{fill:var(--copper)}
+.ostats .lbl{display:block}
+.ostats small.up{color:#b0453a}.ostats small.down{color:#3f7a5a}
+.vp-r.fl span{color:var(--copper)}
+.vp-r em{font-size:10.5px}
+.gauge{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+.gb{display:grid;grid-template-columns:52px 1fr;align-items:center;gap:8px}
+.gb a{font:600 13px "Cormorant Garamond",serif;color:var(--fogdeep);letter-spacing:.04em}
+.gb .tr{position:relative;height:14px;border-radius:7px;background:var(--plaster2)}
+.gb .tr i{position:absolute;top:0;height:100%}
+.gb .fz{background:linear-gradient(90deg,var(--copper2),var(--copper));opacity:.55;border-radius:4px}
+.gb .cw{width:2px;background:#a5574a;opacity:.8}
+.gb .pt{width:12px;height:12px;top:1px;margin-left:-6px;border-radius:50%;border:2px solid var(--card);box-shadow:0 1px 4px #0003}
+.gb .pt.good{background:var(--fogdeep)}.gb .pt.mid{background:var(--copper)}.gb .pt.bad{background:#a5574a}
+.tw{overflow-x:auto;margin:0 -4px}
+.ind-t.us{min-width:440px}
+.ind-t.us th a{display:block;font-weight:700}
+.ind-t.us small{display:block;font-size:11px;color:var(--sub);font-weight:400}
+.ind-t.us td small.up{color:#b0453a}.ind-t.us td small.down{color:#3f7a5a}
+.ind-t.us td.good{color:var(--fogdeep)}.ind-t.us td.mid{color:var(--copper)}.ind-t.us td.bad{color:#a5574a}
+.ind-t.us td{font:600 14px "Cormorant Garamond",serif}
+.sig.good .tag{background:var(--fogdeep)}.sig.bad .tag{background:#a5574a}
+.src{font-size:12px;color:var(--sub);margin-top:10px}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="top">
+    <div class="brand"><small>US STOCKS</small><h1>美股<i>分析</i></h1></div>
+    <div class="upd">UPDATED<br>{{UPDATED}}</div>
+  </div>
+  {{SUMMARY}}
+  <div class="stripe"></div>
+</header>
+<div class="navwrap"><nav>{{NAV}}</nav></div>
+<main><div class="sbox" id="sbox"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="5.2"/><path d="m11 11 3.6 3.6" stroke-linecap="round"/></svg><input id="q" type="search" inputmode="search" autocomplete="off" placeholder="搜尋：代號或名稱，例如 GOOG、輝達" aria-label="搜尋個股"><button class="clr" id="qclr" aria-label="清除">×</button></div><div id="sres"></div>{{BODY}}<p class="foot">每個美股交易日收盤後更新（台北時間早上）・分析結果，不是投資建議</p></main>
+<button id="totop" aria-label="回到頂端">↑</button>
+<script>
+(function(){
+  var btns=[].slice.call(document.querySelectorAll('nav button'));
+  var secs=[].slice.call(document.querySelectorAll('main section'));
+  function show(id){
+    btns.forEach(function(b){b.classList.toggle('on',b.dataset.tab===id)});
+    secs.forEach(function(s){s.classList.toggle('on',s.id===id)});
+    var nw=document.querySelector('.navwrap');if(scrollY>nw.offsetTop)window.scrollTo(0,nw.offsetTop);
+    try{localStorage.setItem('ustab',id)}catch(e){}
+  }
+  btns.forEach(function(b){b.onclick=function(){show(b.dataset.tab)}});
+  var saved=null;try{saved=localStorage.getItem('ustab')}catch(e){}
+  var h=location.hash.slice(1);show(h&&document.getElementById(h)&&document.getElementById(h).matches('section')?h:(saved&&document.getElementById(saved)?saved:'overview'));
+  function jump(id){var el=document.getElementById(id);if(!el)return;show('stocks');var d=el.querySelector('details.full');if(d)d.open=true;setTimeout(function(){el.scrollIntoView({behavior:'smooth',block:'start'})},30)}
+  document.querySelectorAll('[data-go]').forEach(function(a){a.onclick=function(ev){ev.preventDefault();if(a.dataset.to)jump(a.dataset.to);else show(a.dataset.go)}});
+  if(h&&!document.getElementById(h).matches('section'))jump(h);
+  var tip=document.getElementById('tip'),cur=null;
+  document.querySelectorAll('.map circle').forEach(function(c){c.onclick=function(){if(cur)cur.classList.remove('on');cur=c;c.classList.add('on');tip.textContent=c.dataset.i}});
+  var q=document.getElementById('q'),sres=document.getElementById('sres'),sb=document.getElementById('sbox'),mainEl=document.querySelector('main');
+  var all=[].slice.call(document.querySelectorAll('main section article.stock[data-code]'));
+  var CN={good:'地板上方',mid:'測試地板',bad:'跌破地板'};
+  function esc(x){return x.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function run(){
+    var v=q.value.trim();sb.classList.toggle('has',!!v);
+    if(!v){mainEl.classList.remove('searching');sres.innerHTML='';return}
+    mainEl.classList.add('searching');
+    var lv=v.toLowerCase(),seen={},hit=[];
+    all.forEach(function(a){var c=a.dataset.code,n=a.dataset.name.toLowerCase();
+      if(seen[c])return;if(c.toLowerCase().indexOf(lv)===0||n.indexOf(lv)>=0){seen[c]=1;hit.push(a)}});
+    hit.sort(function(x,y){return (x.dataset.code.toLowerCase()===lv||x.dataset.name===v?0:1)-(y.dataset.code.toLowerCase()===lv||y.dataset.name===v?0:1)});
+    sres.innerHTML='';
+    if(!hit.length){
+      sres.innerHTML='<div class="smiss">「'+esc(v)+'」不在這裡追蹤的 10 檔裡（美國公司市值前 10 大）。<br>可以先到 <a href="https://finance.yahoo.com/quote/'+encodeURIComponent(v.toUpperCase())+'" target="_blank" rel="noopener">Yahoo Finance 看這檔 ↗</a>，或告訴我把它加進追蹤名單。</div>';
+      return}
+    var p=document.createElement('p');p.className='shint';
+    p.innerHTML='找到 <b>'+hit.length+'</b> 檔'+('')+'。點「完整分析」看細節。';
+    sres.appendChild(p);
+    hit.slice(0,12).forEach(function(a,i){var c=a.cloneNode(true);var k=(a.className.match(/\b(good|mid|bad)\b/)||[])[0];
+      var tag=document.createElement('p');tag.className='shint';tag.innerHTML='分類：<b>'+(CN[k]||'')+'</b>';
+      sres.appendChild(tag);sres.appendChild(c);if(hit.length===1){var d=c.querySelector('details');if(d)d.open=true}});
+  }
+  q.addEventListener('input',run);
+  document.getElementById('qclr').onclick=function(){q.value='';run();q.focus()};
+  btns.forEach(function(b){b.addEventListener('click',function(){if(q.value){q.value='';run()}})});
+  var top=document.getElementById('totop');
+  window.addEventListener('scroll',function(){top.classList.toggle('show',scrollY>600)},{passive:true});
+  top.onclick=function(){window.scrollTo({top:0,behavior:'smooth'})};
+})();
+</script>
+</body>
+</html>
