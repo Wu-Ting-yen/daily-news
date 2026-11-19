@@ -512,7 +512,7 @@ def analyse(s, rev, cache, inst, mkt_dd):
 
     # 3) 估值：跟自己過去三年比
     pl = c.get("per_last")
-    base = dict(hist).get(pl["date"]) if pl else None
+    base = dict(s.get("hist_all") or hist).get(pl["date"]) if pl else None   # 補算舊日期時，用完整股價找本益比的基準日
     cheap = False
     if pl and base:
         ratio = last / base
@@ -1127,7 +1127,7 @@ def main():
             if len(hh) < 20 or hh[-1][0] != d:
                 continue
             try:
-                u2 = dict(u, hist=hh, vp=None)
+                u2 = dict(u, hist=hh, hist_all=h, vp=None)
                 b_ = analyse(u2, rev, cache, {}, 0)
                 backfill[d][u["code"]] = {"c": b_["cat"], "p": b_["price"], "f": b_["fund"]}
             except Exception as ex:
