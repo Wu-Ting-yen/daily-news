@@ -76,17 +76,20 @@ def universe():
     return rows[:UNIVERSE]
 
 
-def yahoo(symbol, rng="6mo"):
+def yahoo(symbol, rng="6mo", full=False):
     j = get(f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?range={rng}&interval=1d")
     try:
         r = j["chart"]["result"][0]
-        out = []
-        for t, c in zip(r["timestamp"], r["indicators"]["quote"][0]["close"]):
+        q = r["indicators"]["quote"][0]
+        out, hlv = [], []
+        for i, t in enumerate(r["timestamp"]):
+            c = q["close"][i]
             if c is not None:
                 out.append((dt.datetime.fromtimestamp(t, TZ).strftime("%Y-%m-%d"), round(c, 2)))
-        return out
+                hlv.append((q["high"][i], q["low"][i], q["volume"][i]))
+        return (out, hlv) if full else out
     except Exception:
-        return []
+        return ([], []) if full else []
 
 
 class FinMind:
@@ -179,6 +182,212 @@ def institutional(dates):
             t[0] += sum(num(row[i]) or 0 for i in ifor)
             t[1] += num(row[itru]) or 0
     return tot, used
+
+
+def taifex_csv(url, form):
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, data=urllib.parse.urlencode(form).encode(), headers=UA)
+            with urllib.request.urlopen(req, timeout=60) as r:
+                raw = r.read()
+            text = raw.decode("big5", "replace") if not raw.startswith(b"\xef\xbb\xbf") else raw.decode("utf-8-sig")
+            rows = [ln.split(",") for ln in text.strip().splitlines()]
+            return rows if rows and len(rows[0]) > 3 else []
+        except Exception as e:
+            print("taifex error", attempt, url, e, file=sys.stderr)
+            time.sleep(5)
+    return []
+
+
+def vprofile(bars, nbin=24):
+    """成交量分佈（Volume Profile）：把每天的成交量平均分到當天最低到最高價之間，累加成各價位的量"""
+    bars = [(h, l, v) for h, l, v in bars if h and l and v and h >= l]
+    if len(bars) < 10:
+        return None
+    lo, hi = min(l for _, l, _ in bars), max(h for h, _, _ in bars)
+    step = (hi - lo) / nbin or 1
+    vol = [0.0] * nbin
+    for h, l, v in bars:
+        a, b = int((l - lo) / step), min(nbin - 1, int((h - lo) / step))
+        a = min(a, nbin - 1)
+        for i in range(a, b + 1):
+            vol[i] += v / (b - a + 1)
+    poc = max(range(nbin), key=lambda i: vol[i])
+    # 價值區：從最密集處往外擴，直到涵蓋 70% 成交量
+    tot, inc, i0, i1 = sum(vol), vol[poc], poc, poc
+    while inc < tot * 0.7 and (i0 > 0 or i1 < nbin - 1):
+        up = vol[i1 + 1] if i1 < nbin - 1 else -1
+        dn = vol[i0 - 1] if i0 > 0 else -1
+        if up >= dn:
+            i1 += 1; inc += up
+        else:
+            i0 -= 1; inc += dn
+    p = lambda i: round(lo + step * i, 2)
+    return {"lo": round(lo, 2), "step": round(step, 4), "vol": [round(x) for x in vol],
+            "poc": p(poc + 0.5), "val": p(i0), "vah": p(i1 + 1)}
+
+
+def futures_bars(date):
+    """台指期近月（每天成交量最大的月合約、一般時段）近 3 個月的高、低、量"""
+    end = dt.date.fromisoformat(date)
+    bars = {}
+    for k in range(3):
+        e = end - dt.timedelta(days=30 * k)
+        st = e - dt.timedelta(days=29)
+        rows = taifex_csv("https://www.taifex.com.tw/cht/3/futDataDown",
+                          {"down_type": "1", "commodity_id": "TX", "commodity2_id": "",
+                           "queryStartDate": st.strftime("%Y/%m/%d"), "queryEndDate": e.strftime("%Y/%m/%d")})
+        time.sleep(2)
+        if len(rows) < 2:
+            continue
+        h = rows[0]
+        try:
+            ix = {n: h.index(n) for n in ("交易日期", "到期月份(週別)", "最高價", "最低價", "成交量", "交易時段", "收盤價")}
+        except ValueError:
+            print("futures header", h[:12], file=sys.stderr)
+            continue
+        for r in rows[1:]:
+            if len(r) < len(h) - 2 or r[ix["交易時段"]].strip() != "一般":
+                continue
+            m = r[ix["到期月份(週別)"]].strip()
+            if not (len(m) == 6 and m.isdigit()):
+                continue
+            d0, v = r[ix["交易日期"]].strip(), num(r[ix["成交量"]]) or 0
+            if v > bars.get(d0, (0, 0, 0, 0))[2]:
+                bars[d0] = (num(r[ix["最高價"]]), num(r[ix["最低價"]]), v, num(r[ix["收盤價"]]))
+    return [bars[d] for d in sorted(bars)][-60:]
+
+
+def option_strike_volume(date, days=28):
+    """台指選擇權近一個月各履約價的成交量（買權、賣權分開，所有到期合約、日盤＋夜盤）"""
+    e = dt.date.fromisoformat(date)
+    rows = taifex_csv("https://www.taifex.com.tw/cht/3/optDataDown",
+                      {"down_type": "1", "commodity_id": "TXO", "commodity_id2": "",
+                       "queryStartDate": (e - dt.timedelta(days=days)).strftime("%Y/%m/%d"), "queryEndDate": e.strftime("%Y/%m/%d")})
+    if len(rows) < 2:
+        return {}
+    h = rows[0]
+    try:
+        ik, icp, iv, idt = h.index("履約價"), h.index("買賣權"), h.index("成交量"), h.index("交易日期")
+    except ValueError:
+        return {}
+    out, dates = {}, set()
+    for r in rows[1:]:
+        if len(r) <= iv:
+            continue
+        k = num(r[ik])
+        if not k:
+            continue
+        t = out.setdefault(int(k), [0, 0])
+        t[0 if r[icp].strip() == "買權" else 1] += int(num(r[iv]) or 0)
+        dates.add(r[idt])
+    return {"by": out, "days": len(dates)}
+
+
+def options(date, spot):
+    """台指選擇權：總未平倉與變化、Put/Call 比、外資部位；台指期成交量分佈"""
+    d = date.replace("-", "/")
+    out = {"date": date}
+    start = (dt.date.fromisoformat(date) - dt.timedelta(days=30)).strftime("%Y/%m/%d")
+    pc = taifex_csv("https://www.taifex.com.tw/cht/3/pcRatioDown", {"queryStartDate": start, "queryEndDate": d})
+    rows = [r for r in pc[1:] if len(r) > 6 and num(r[3]) is not None]
+    rows.sort(key=lambda r: r[0])
+    if rows:
+        out["pc"] = [[r[0].replace("/", "-"), num(r[3]), num(r[6]), int((num(r[4]) or 0) + (num(r[5]) or 0))] for r in rows][-20:]
+        if out["pc"][-1][0] != date:
+            return {}  # 當天資料還沒公布，讓呼叫端改用前一個交易日
+        out["oi"] = out["pc"][-1][3]
+        out["oi_put"], out["oi_call"] = int(num(rows[-1][4]) or 0), int(num(rows[-1][5]) or 0)
+    fi = taifex_csv("https://www.taifex.com.tw/cht/3/callsAndPutsDateDown", {"queryStartDate": d, "queryEndDate": d, "commodityId": "TXO"})
+    for r in fi[1:]:
+        if len(r) > 15 and "外資" in r[3]:
+            out["foreign_" + ("call" if r[2].strip().upper() == "CALL" else "put")] = round((num(r[15]) or 0) / 1e5, 2)  # 千元 → 億
+    fb = futures_bars(date)
+    if fb:
+        out["vp"] = vprofile([(h, l, v) for h, l, v, _ in fb])
+        out["fut_close"] = fb[-1][3]
+        out["fut_days"] = len(fb)
+        sv = option_strike_volume(date)
+        vp = out["vp"]
+        if sv.get("by") and vp:
+            n = len(vp["vol"])
+            ob = [[0, 0] for _ in range(n)]
+            for k, (c, p_) in sv["by"].items():
+                i = int((k - vp["lo"]) / vp["step"])
+                if 0 <= i < n:
+                    ob[i][0] += c; ob[i][1] += p_
+            vp["opt"] = ob
+            out["opt_days"] = sv["days"]
+            # 選擇權成交最集中的買權／賣權履約價（在期貨價上下方）
+            px = fb[-1][3]
+            up = {k: v[0] for k, v in sv["by"].items() if px <= k <= px * 1.12}
+            dn = {k: v[1] for k, v in sv["by"].items() if px * 0.88 <= k < px}
+            if up:
+                out["call_hot"] = max(up, key=up.get)
+            if dn:
+                out["put_hot"] = max(dn, key=dn.get)
+    return out
+
+
+def hedge(o, mkt, idx_closes):
+    """避險燈號：幾個警訊同時出現就建議避險"""
+    why, n = [], 0
+    vp, px = o.get("vp"), o.get("fut_close")
+    if vp and px:
+        if px < vp["val"]:
+            n += 1; why.append(f"台指期 {px:,.0f} 跌破近 {o.get('fut_days', 60)} 日成交密集區下緣 {vp['val']:,.0f}，下方買盤支撐變少")
+        elif px > vp["vah"]:
+            why.append(f"台指期 {px:,.0f} 在成交密集區上方，多數人有賺，支撐還在")
+        else:
+            why.append(f"台指期 {px:,.0f} 在成交密集區（{vp['val']:,.0f}–{vp['vah']:,.0f}）裡，多空拉鋸")
+    pc = o.get("pc") or []
+    if len(pc) >= 6:
+        v = [x[1] for x in pc]
+        avg = sum(v[:-1]) / (len(v) - 1)
+        if v[-1] >= max(110, avg * 1.15):
+            n += 1; why.append(f"Put/Call 成交比 {v[-1]:.0f}% 高於平常（{avg:.0f}%），買保險的人變多")
+        oi5 = pc[-6][3]
+        if oi5 and o.get("oi"):
+            ch = (o["oi"] / oi5 - 1) * 100
+            if ch >= 20 and v[-1] >= avg:
+                n += 1; why.append(f"選擇權總未平倉 5 日增加 {ch:.0f}%，而且偏向賣權，避險部位在堆積")
+    fc, fp = o.get("foreign_call"), o.get("foreign_put")
+    if fc is not None and fp is not None and fp - fc > 0.5:
+        n += 1; why.append(f"外資在選擇權偏空（賣權淨部位比買權多 {fp - fc:.1f} 億）")
+    if len(idx_closes) >= 20 and idx_closes[-1] < sum(idx_closes[-20:]) / 20:
+        n += 1; why.append("加權指數在 20 日均線下方，短線趨勢向下")
+    level = "建議避險" if n >= 3 else "留意" if n == 2 else "不用避險"
+    return {"level": level, "n": n, "why": why}
+
+
+def warrants(date, name2code):
+    """每檔標的當天認購 / 認售權證成交金額（元），上市＋上櫃權證合計"""
+    tot = {}
+    for typ, side in (("0999", 0), ("0999P", 1)):
+        j = get(f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date.replace('-', '')}&type={typ}&response=json")
+        time.sleep(3)
+        for t in (j or {}).get("tables", []):
+            f = t.get("fields") or []
+            if "標的代號" not in f or "成交金額" not in f:
+                continue
+            iu, ia = f.index("標的代號"), f.index("成交金額")
+            for r in t.get("data", []):
+                code = r[iu].strip()
+                tot.setdefault(code, [0, 0])[side] += num(r[ia]) or 0
+    # 上櫃權證：成交檔沒有標的代號，要用基本資料的「標的名稱」對回股票代號
+    basic = get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap37_O") or []
+    meta = {}
+    for r in basic if isinstance(basic, list) else []:
+        code = name2code.get(str(r.get("標的證券/指數", "")).strip())
+        if code:
+            meta[str(r.get("權證代號", "")).strip()] = (code, 1 if "售" in str(r.get("權證類型", "")) else 0)
+    trades = get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap42_O") or []
+    roc = f"{int(date[:4]) - 1911}{date[5:7]}{date[8:]}"
+    for r in trades if isinstance(trades, list) else []:
+        m = meta.get(str(r.get("權證代號", "")).strip())
+        if m and str(r.get("交易日期", roc)) == roc:
+            tot.setdefault(m[0], [0, 0])[m[1]] += num(r.get("成交金額")) or 0
+    return tot
 
 
 # ───────────────────────── 判斷邏輯 ─────────────────────────
@@ -327,6 +536,27 @@ def analyse(s, rev, cache, inst, mkt_dd):
             else:
                 reasons.append(("mid", f"{what} {val:.1f} 倍，在過去三年的中間位置"))
 
+    # 個股成交量分佈（近 60 日）
+    vp = s.get("vp")
+    if vp:
+        if last < vp["val"]:
+            reasons.append(("mid", f"股價跌破近 3 個月成交密集區（{vp['val']:,.1f}–{vp['vah']:,.1f}），上面有不少套牢賣壓"))
+        elif last <= vp["vah"]:
+            reasons.append(("mid", f"股價在近 3 個月成交密集區（{vp['val']:,.1f}–{vp['vah']:,.1f}）裡，這一帶買的人多，有支撐"))
+
+    # 權證（散戶情緒，只當參考）
+    w = WAR.get(s["code"])
+    if w and sum(w["today"]) >= 5e6:
+        c_amt, p_amt = w["today"]
+        share = p_amt / (c_amt + p_amt) * 100
+        s.update(w_call=round(c_amt / 1e8, 2), w_put=round(p_amt / 1e8, 2), w_put_share=round(share), w_put_avg=w.get("avg"))
+        avg = w.get("avg")
+        if avg is not None and share >= max(30, avg * 1.8):
+            reasons.append(("good" if score >= 2 else "mid",
+                            f"權證：認售佔 {share:.0f}%（平常約 {avg:.0f}%），散戶突然很悲觀"))
+        elif avg is not None and share <= avg * 0.5 and c_amt >= 3e7:
+            reasons.append(("mid", f"權證：認購成交 {c_amt / 1e8:.1f} 億，散戶在搶反彈"))
+
     # 4) 法人（只當參考，不計入基本面）
     t = inst.get(s["code"])
     smart = False
@@ -412,6 +642,10 @@ def card(s, i=None):
         r = s.get("pb_rank")
         chips.append(("股價淨值比", f"{s['pb']:.2f}" + where(r),
                       "up" if r is not None and r <= 0.3 else ""))
+    if s.get("w_put_share") is not None:
+        avg = s.get("w_put_avg")
+        chips.append(("權證認售佔比", f"{s['w_put_share']}%" + (f" <small>平常 {avg}%</small>" if avg is not None else ""),
+                      "down" if avg is not None and s["w_put_share"] >= max(30, avg * 1.8) else ""))
     chip_html = "".join(f'<div class="chip {t}"><span>{a}</span><b>{b}</b></div>' for a, b, t in chips)
     marks = {"good": "○", "bad": "×", "mid": "·"}
     rs = "".join(f'<li class="{k}"><i>{marks[k]}</i>{e(t)}</li>' for k, t in s["reasons"])
@@ -424,6 +658,20 @@ def card(s, i=None):
         bars = "".join(f'<div class="bar"><i class="{"pos" if v >= 0 else "neg"}" style="height:{max(3, abs(v) / mx * 34):.0f}px"></i>'
                        f'<b>{v:+.0f}%</b><span>{m}月</span></div>' for m, v in s["rev6"])
         detail += f'<div class="dt"><h4>近 {len(s["rev6"])} 個月營收年增</h4><div class="bars">{bars}</div></div>'
+    if s.get("vp"):
+        vp = s["vp"]
+        mx = max(vp["vol"]) or 1
+        rows = ""
+        for i in reversed(range(len(vp["vol"]))):
+            lo = vp["lo"] + vp["step"] * i
+            hi = lo + vp["step"]
+            inva = vp["val"] <= lo + 1e-6 and hi <= vp["vah"] + 1e-6
+            ispoc = lo <= vp["poc"] < hi
+            here = lo <= s["price"] < hi or (i == 0 and s["price"] < lo) or (i == len(vp["vol"]) - 1 and s["price"] >= hi)
+            rows += (f'<div class="vp-r sm{" here" if here else ""}"><span>{lo:,.1f}</span>'
+                     f'<div><i class="{"poc" if ispoc else "va" if inva else ""}" style="width:{vp["vol"][i] / mx * 100:.0f}%"></i></div>'
+                     f'<em>{"◀ 現價" if here else ""}</em></div>')
+        detail += f'<div class="dt"><h4>近 3 個月成交量分佈</h4><div class="vp">{rows}</div></div>'
     if s.get("q5"):
         head = "".join(f"<th>{k}</th>" for k, _, _ in s["q5"])
         eps = "".join(f"<td>{v:.2f}</td>" if v is not None else "<td>—</td>" for _, v, _ in s["q5"])
@@ -446,7 +694,7 @@ def card(s, i=None):
 </article>'''
 
 
-def render(stocks, mkt, updated, inst_days, sig=()):
+def render(stocks, mkt, updated, inst_days, sig=(), opt=None):
     groups = {
         "oversold": sorted([s for s in stocks if s["cat"] == "oversold"], key=lambda s: -s["rank"]),
         "pricey": sorted([s for s in stocks if s["cat"] == "pricey"], key=lambda s: -s["rank"]),
@@ -463,7 +711,7 @@ def render(stocks, mkt, updated, inst_days, sig=()):
     nav = '<a class="navlink back" href="./">← 新聞</a><button data-tab="overview">總覽</button>'
     nav += "".join(f'<button data-tab="{k}">{names[k]}<b>{len(v)}</b></button>' for k, v in groups.items())
     nav += f'<button data-tab="signals">訊號紀錄<b>{len(sig)}</b></button><button data-tab="how">怎麼判斷</button>'
-    body = overview(stocks, groups, mkt)
+    body = overview(stocks, groups, mkt, opt)
     for k, v in groups.items():
         cs = [card(s, i + 1 if k == "oversold" else None) for i, s in enumerate(v)]
         cards = "".join(cs[:15])
@@ -488,7 +736,69 @@ CAT = {"oversold": ("可能錯殺", "var(--copper)"), "pricey": ("跌深・不�
        "weak": ("基本面轉弱", "#a5574a"), "strong": ("其他", "#b9b4a8"), "mixed": ("其他", "#b9b4a8")}
 
 
-def overview(stocks, groups, mkt):
+def options_card(o, mkt):
+    if not o:
+        return ""
+    hg = o.get("hedge") or {}
+    lv = hg.get("level", "—")
+    cls = {"建議避險": "red", "留意": "amber", "不用避險": "calm"}.get(lv, "")
+    why = "".join(f"<li>{html.escape(w)}</li>" for w in hg.get("why", []))
+    vp_html = ""
+    vp, px = o.get("vp"), o.get("fut_close")
+    if vp:
+        mx = max(vp["vol"]) or 1
+        omx = max((max(a, b) for a, b in vp.get("opt") or [[0, 0]]), default=0) or 1
+        rows = ""
+        n = len(vp["vol"])
+        for i in reversed(range(n)):
+            lo = vp["lo"] + vp["step"] * i
+            hi = lo + vp["step"]
+            inva = vp["val"] <= lo + 1e-6 and hi <= vp["vah"] + 1e-6
+            ispoc = lo <= vp["poc"] < hi
+            here = px is not None and lo <= px < hi
+            ob = ""
+            if vp.get("opt"):
+                c, p_ = vp["opt"][i]
+                ob = (f'<div class="ob"><i class="p" style="width:{p_ / omx * 100:.0f}%"></i>'
+                      f'<i class="c" style="width:{c / omx * 100:.0f}%"></i></div>')
+            rows += (f'<div class="vp-r{" here" if here else ""}{" two" if ob else ""}"><span>{lo:,.0f}</span>'
+                     f'<div><i class="{"poc" if ispoc else "va" if inva else ""}" style="width:{vp["vol"][i] / mx * 100:.0f}%"></i></div>'
+                     f'{ob}<em>{"◀ 現在" if here else "最密集" if ispoc else ""}</em></div>')
+        vp_html = (f'<h3 class="sub3">台指期成交量分佈（近 {o.get("fut_days", 60)} 個交易日）</h3>'
+                   f'<p class="note2">每一列是一個價格區間，長條越長代表在那裡成交越多。<b>銅色</b>是成交最密集的價位（{vp["poc"]:,.0f}），'
+                   f'<b>深霧藍</b>是 70% 成交量集中的區間（{vp["val"]:,.0f}–{vp["vah"]:,.0f}）。跌破這個區間，代表很多人買在上面、正在虧損，賣壓容易變大。</p>'
+                   + (f'<p class="note2">右欄是<b>台指選擇權</b>近 {o.get("opt_days", 20)} 個交易日在各履約價的成交量（<b style="color:var(--copper)">銅色</b>買權、<b style="color:var(--fogdeep)">霧藍</b>賣權），代表交易員押注的價位。'
+                      + (f'上方買權最熱的是 {o["call_hot"]:,}，' if o.get("call_hot") else "")
+                      + (f'下方賣權最熱的是 {o["put_hot"]:,}。' if o.get("put_hot") else "")
+                      + '期貨和選擇權都很密集的價位，是最重要的支撐或壓力。</p>' if vp.get("opt") else "")
+                   + (f'<div class="vp-h"><span></span><span>台指期成交量</span><span>選擇權成交量</span><span></span></div>' if vp.get("opt") else "")
+                   + f'<div class="vp">{rows}</div>')
+    pc = o.get("pc") or []
+    stats = ""
+    if o.get("oi"):
+        ch1 = (o["oi"] / pc[-2][3] - 1) * 100 if len(pc) > 1 and pc[-2][3] else None
+        ch5 = (o["oi"] / pc[-6][3] - 1) * 100 if len(pc) > 5 and pc[-6][3] else None
+        stats += (f'<div><span class="lbl">選擇權總未平倉</span><b>{o["oi"]:,}</b><small>口・'
+                  + (f"比前一天 {ch1:+.0f}%" if ch1 is not None else "") + (f"、5 天 {ch5:+.0f}%" if ch5 is not None else "")
+                  + ("（週三是結算日，到期合約退場，未平倉減少屬正常）" if ch1 is not None and ch1 < -15 and dt.date.fromisoformat(pc[-1][0]).weekday() == 2 else "")
+                  + '</small></div>')
+    if pc:
+        vals = [x[1] for x in pc]
+        stats += (f'<div><span class="lbl">Put/Call 成交比</span><b>{vals[-1]:.0f}%</b>'
+                  f'<small>近 {len(vals)} 日平均 {sum(vals) / len(vals):.0f}%</small>{spark_svg(vals, 110, 26)}</div>')
+    fo = ""
+    if o.get("foreign_call") is not None and o.get("foreign_put") is not None:
+        fc, fp = o["foreign_call"], o["foreign_put"]
+        fo = (f'<p class="note2">外資台指選擇權未平倉：買權淨{"買" if fc >= 0 else "賣"} {abs(fc):.1f} 億、'
+              f'賣權淨{"買" if fp >= 0 else "賣"} {abs(fp):.1f} 億。</p>')
+    return f'''<div class="card ov"><h2>大盤・要不要避險</h2>
+<div class="hedge {cls}"><b>{lv}</b><span>{hg.get("n", 0)} / 5 個警訊</span></div>
+<ul class="hwhy">{why}</ul>
+<div class="ostats">{stats}</div>{fo}
+{vp_html}</div>'''
+
+
+def overview(stocks, groups, mkt, opt=None):
     e = html.escape
     n = len(stocks) or 1
     # 1) 分類比例條
@@ -554,6 +864,7 @@ def overview(stocks, groups, mkt):
         return "".join(f'<li><a href="#{k}" data-go="{k}"><b>{e(s["name"])}</b><em>{s["code"]}</em>'
                        f'<span>{s["dd"]:+.0f}%</span></a></li>' for s in lst[:5])
     return f'''<section id="overview">
+{options_card(opt, mkt)}
 <div class="card ov"><h2>今天 150 檔的樣子</h2>
 <p class="note2">加權指數距三個月高點 {mkt["dd"]:+.1f}%。150 檔裡，各類別各有幾檔：</p>
 <div class="seg">{seg}</div><div class="legend">{legend}</div></div>
@@ -579,13 +890,14 @@ def signals_html(sig):
         rs = "".join(f"<li class='mid'><i>·</i>{e(t)}</li>" for t in x["reasons"])
         rows += f'''<article class="card stock sig {'oversold' if x['type'] == '錯殺' else 'weak'}">
   <div class="head"><div class="nm"><h3>{e(x["name"])} <em>{x["code"]}</em></h3>
-  <div class="ind"><span class="tag">{x["type"]}・強度{x["strength"]}</span>{x["date"][5:].replace("-", "/")} 收盤 {x["price"]:,.2f}</div></div>
+  <div class="ind"><span class="tag">{x["type"]}{x.get("stage", "") if x["type"] == "錯殺" else ""}・強度{x["strength"]}</span>{x["date"][5:].replace("-", "/")} 收盤 {x["price"]:,.2f}</div></div>
   <div class="px"><div class="dd">{x["dd"]:+.1f}<small>%</small></div><div class="p">當時距高點</div></div></div>
   <div class="chips">{perf}</div>
   <details><summary>當時的理由</summary><ul class="why">{rs}</ul></details>
 </article>'''
     lead = ("只有訊號特別明確時才會記錄在這裡，並傳 Telegram 通知：<br>"
-            "<b>錯殺</b>＝連續 3 天在錯殺名單、基本面分數 ≥ 5、估值在近三年最便宜的 10%、外資或投信近 5 日買超。<br>"
+            "<b>錯殺初步</b>＝第一天符合：在錯殺名單、基本面分數 ≥ 5、估值在近三年最便宜的 10%、外資或投信近 5 日買超（特別強的當天就通知）。<br>"
+            "<b>錯殺確認</b>＝連續 3 天都符合，一定通知。兩種都記錄之後的漲跌，用來比較快進和等確認哪個好。<br>"
             "<b>轉弱</b>＝前一天還不是轉弱，新公布的營收或財報讓它亮紅燈。<br>之後 5、20、60 個交易日的漲跌會自動補上，用來檢驗這套方法準不準。")
     return f'<section id="signals"><p class="lead">{lead}</p>{rows or "<p class=empty>還沒有明確訊號。每天收盤後檢查，出現時會通知你。</p>"}</section>'
 
@@ -601,6 +913,9 @@ HOW = '''<section id="how"><div class="card how">
 <li><b>EPS 年增</b>：最新一季每股賺多少，跟去年同一季比。季對季比較會受淡旺季影響，所以跟去年同季比。</li>
 <li><b>毛利率</b>：每賣 100 元賺多少毛利。毛利率往下掉，常代表產品賣不到好價錢或成本變高。</li>
 <li><b>本益比位置</b>：現在的本益比，放在這家公司過去三年的本益比裡排第幾。「20 分位」代表過去三年只有 20% 的時間比現在便宜。金融股等獲利波動大的公司改用股價淨值比。</li>
+<li><b>大盤要不要避險</b>：看五個警訊——台指期是否跌破近 60 日「成交量分佈」的密集區、Put/Call 成交比是否比平常高、選擇權總未平倉是否快速增加且偏向賣權、外資選擇權是否偏空、加權指數是否在 20 日均線下。2 個亮起是「留意」，3 個以上「建議避險」。</li>
+<li><b>成交量分佈</b>：把一段時間每天的成交量，平均分到當天最低到最高價之間，累加起來看哪個價位成交最多。沒有免費的內外盤資料，所以只看總量。股價跌破密集區，代表很多人買在上面、正在虧損，賣壓容易變大。</li>
+<li><b>權證（散戶情緒）</b>：每檔股票當天認購、認售權證的成交金額（上市＋上櫃）。認售佔比突然比平常高很多，代表散戶很悲觀；基本面好卻被這樣看壞，常是錯殺的特徵。只當參考，不計分。</li>
 <li><b>法人動向</b>：近 5 個交易日（{{INST}}）外資和投信買超或賣超多少錢。只當參考，不計分。</li>
 </ol>
 <h2>怎麼分類</h2>
@@ -616,7 +931,7 @@ HOW = '''<section id="how"><div class="card how">
 <p>金融股的月營收含投資損益，起伏很大，所以不拿來評分，改看 EPS 和股價淨值比。</p>
 <p>景氣循環股（記憶體、面板、航運、塑化）在獲利最好的時候，本益比會看起來特別低，但那可能是景氣高點，不一定真的便宜。</p>
 <p>財報是落後資料，股價可能已經在反映「下一季會變差」，這是篩選工具看不到的。產業的利空（例如關稅、需求轉弱）也不會出現在過去的數字裡。點進每檔股票，再看新聞和公司說明，才做決定。</p>
-<p class="src">資料來源：臺灣證券交易所 OpenAPI（公開資訊觀測站月營收、收盤、三大法人）、FinMind（每季財報、歷史本益比）、Yahoo 股市（每日股價）。</p>
+<p class="src">資料來源：臺灣證券交易所 OpenAPI（公開資訊觀測站月營收、收盤、三大法人）、臺灣期貨交易所（台指選擇權）、FinMind（每季財報、歷史本益比）、Yahoo 股市（每日股價）。</p>
 <p class="disc">這只是用公開數字做的篩選，不是投資建議。</p>
 </div></section>'''
 
@@ -644,7 +959,9 @@ def track(stocks, date, after_close):
                     break
         s["streak"] = n
     if after_close:
-        save(f"data/history/{date}.json", {s["code"]: {"c": s["cat"], "p": s["price"], "f": s["fund"]} for s in stocks})
+        snap = {s["code"]: {"c": s["cat"], "p": s["price"], "f": s["fund"]} for s in stocks}
+        snap["_w"] = {s["code"]: WAR[s["code"]]["today"] for s in stocks if s["code"] in WAR}
+        save(f"data/history/{date}.json", snap)
 
     sig = load("data/signals.json", [])
     by_code = {x["code"]: x for x in stocks}
@@ -666,24 +983,34 @@ def track(stocks, date, after_close):
 
     new = []
     if after_close and prev:
-        recent = {(x["code"], x["type"]) for x in sig if x["date"] >= (dt.date.fromisoformat(date) - dt.timedelta(days=30)).isoformat()}
+        recent = {(x["code"], x["type"], x.get("stage", "確認")) for x in sig if x["date"] >= (dt.date.fromisoformat(date) - dt.timedelta(days=30)).isoformat()}
         for s in stocks:
             rank = s.get("pe_rank") if s.get("pe_rank") is not None else s.get("pb_rank")
             buying = (s.get("foreign") or 0) > 0 or (s.get("trust") or 0) > 0
-            kind = None
-            if s["cat"] == "oversold" and s["streak"] >= 3 and s["fund"] >= 5 and rank is not None and rank <= 0.1 and buying:
+            kind, stage = None, "確認"
+            good = s["cat"] == "oversold" and s["fund"] >= 5 and rank is not None and rank <= 0.1 and buying
+            if good and s["streak"] >= 3:
                 kind = "錯殺"
+            elif good:
+                kind, stage = "錯殺", "初步"
             was = prev.get(s["code"], {}).get("c")
             if s["cat"] == "weak" and was and was != "weak" and s["flags"]:
-                kind = "轉弱"
-            if not kind or (s["code"], kind) in recent:
+                kind, stage = "轉弱", "確認"
+            if not kind or (s["code"], kind, stage) in recent:
                 continue
-            x = {"id": f'{date}-{s["code"]}-{kind}', "date": date, "code": s["code"], "name": s["name"], "type": kind,
+            x = {"id": f'{date}-{s["code"]}-{kind}{stage}', "date": date, "stage": stage, "code": s["code"], "name": s["name"], "type": kind,
                  "industry": s.get("industry"), "price": s["price"], "dd": s["dd"], "fund": s["fund"], "streak": s["streak"],
                  "rev_yoy": s.get("rev_yoy"), "eps_yoy": s.get("eps_yoy"), "gm": s.get("gm"), "gm_yoy": s.get("gm_yoy"),
                  "pe": s.get("pe"), "pb": s.get("pb"), "val_rank": rank, "foreign": s.get("foreign"), "trust": s.get("trust"),
                  "flags": s["flags"], "reasons": [t for _, t in s["reasons"]], "rev6": s.get("rev6"), "q5": s.get("q5")}
             x["strength"] = "強" if kind == "轉弱" or (s["fund"] >= 6 and rank <= 0.05) else "中"
+            if OPT.get("hedge"):
+                pcv = (OPT.get("pc") or [[0, None]])[-1][1]
+                vpm = OPT.get("vp") or {}
+                x["opt_note"] = (f"避險燈號：{OPT['hedge']['level']}" + (f"・台指期密集區 {vpm['val']:,.0f}–{vpm['vah']:,.0f}" if vpm else "")
+                                 + (f"・P/C 成交比 {pcv:.0f}%" if pcv else ""))
+            # 初步訊號只有「強」才當天推播；確認訊號一律推播
+            x["notify"] = stage == "確認" or x["strength"] == "強"
             sig.append(x)
             new.append(x)
     save("data/signals.json", sig)
@@ -711,17 +1038,30 @@ def send_telegram(text):
         return False
 
 
+OPT = {}
+WAR = {}
+
+
 def push(new, mkt, date, url):
     e = html.escape
+    new = [x for x in new if x.get("notify", True)]
+    if len(new) > 5:   # 一次太多就合成一則
+        lines = [f"<b>📌 台股分析 {date[5:].replace('-', '/')}：{len(new)} 個新訊號</b>", ""]
+        for x in new:
+            lines.append(f"・{'🟢' if x['type'] == '錯殺' else '🔻'}{x['type']}{x.get('stage', '')}｜{e(x['name'])} {x['code']}　跌{x['dd']:.0f}%")
+        lines += ["", f'<a href="{url}stocks.html#signals">看每檔的理由</a>　（篩選結果，不是投資建議）']
+        send_telegram("\n".join(lines))
+        return
     for x in new:
-        icon = "🟢 可能錯殺" if x["type"] == "錯殺" else "🔻 基本面轉弱"
+        icon = (f"🟢 可能錯殺・{x.get('stage', '確認')}訊號") if x["type"] == "錯殺" else "🔻 基本面轉弱"
         lines = [f"<b>{icon}｜{e(x['name'])} {x['code']}</b>（訊號強度：{x['strength']}）",
                  f"{date[5:].replace('-', '/')} 收盤 {x['price']:,.2f}，距三個月高點 {x['dd']:+.1f}%"
                  + (f"，連續 {x['streak']} 天入選" if x["type"] == "錯殺" else ""), ""]
         lines += [f"・{e(t)}" for t in x["reasons"]]
         if x.get("rev6"):
             lines.append("・近月營收年增：" + "、".join(f"{m}月{v:+.0f}%" for m, v in x["rev6"]))
-        lines += ["", f"大盤：加權 {mkt['last']:,.0f}，距高點 {mkt['dd']:+.1f}%",
+        lines += ["", f"大盤：加權 {mkt['last']:,.0f}，距高點 {mkt['dd']:+.1f}%" + (
+                  f"；大盤避險燈號：{OPT['hedge']['level']}" if OPT.get("hedge") else ""),
                   f'<a href="{url}stocks.html#signals">看訊號紀錄</a>　（篩選結果，不是投資建議）']
         send_telegram("\n".join(lines))
         time.sleep(1)
@@ -752,9 +1092,21 @@ def main():
     inst, inst_days = institutional([d for d, _ in idx[-5:]])
     print("inst days", inst_days)
 
+    name2code = {u["name"]: u["code"] for u in uni}
+    war = warrants(last_date, name2code)
+    if not war:
+        war = warrants(idx[-2][0], name2code)
+    wdays = [d for d in history_days() if d < last_date][-5:]
+    past = [load(f"data/history/{d}.json", {}).get("_w", {}) for d in wdays]
+    for code, v in war.items():
+        shares = [p[code][1] / sum(p[code]) * 100 for p in past if code in p and sum(p[code]) > 0]
+        WAR[code] = {"today": v, "avg": round(sum(shares) / len(shares)) if shares else None}
+    print("warrant underlyings", len(war))
+
     stocks = []
     for u in uni:
-        h = yahoo(u["code"] + ".TW")
+        h, hlv = yahoo(u["code"] + ".TW", full=True)
+        u["vp"] = vprofile(hlv[-60:], 16)
         time.sleep(0.3)
         if len(h) < 20:
             print("no price", u["code"], file=sys.stderr)
@@ -766,14 +1118,26 @@ def main():
             print("analyse error", u["code"], ex, file=sys.stderr)
             continue
         s.pop("hist", None)
+        s.pop("hlv", None)
         stocks.append(s)
+
+    opt = {}
+    for d in [x for x, _ in idx[-3:]][::-1]:   # 當天資料還沒出來就用前一個交易日
+        opt = options(d, mkt["last"])
+        if opt.get("oi"):
+            break
+    opt["hedge"] = hedge(opt, mkt, ic)
+    OPT.update(opt)
+    print("options", {k: v for k, v in opt.items() if k not in ("bins", "pc")})
+    save("data/options.json", opt)
+
 
     after_close = last_date == today.isoformat() and now.hour * 100 + now.minute >= 1430
     sig, new = track(stocks, last_date, after_close)
     print("signals new", [(x["name"], x["type"]) for x in new])
 
     updated = now.strftime("%m/%d %H:%M")
-    groups = render(stocks, mkt, updated, inst_days, sig)
+    groups = render(stocks, mkt, updated, inst_days, sig, opt)
     save("data/stocks.json", {"updated": now.isoformat(), "market": mkt, "stocks": stocks})
     print({k: len(v) for k, v in groups.items()})
 
