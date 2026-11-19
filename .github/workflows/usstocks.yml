@@ -1,0 +1,38 @@
+name: 美股分析
+
+on:
+  schedule:
+    - cron: "20 22 * * 1-5"   # 台北時間 週二到週六 06:20（美股收盤後）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-news
+  cancel-in-progress: false
+
+jobs:
+  us:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 分析美股、更新網頁、推播
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PUSH: ${{ github.event_name != 'push' && '1' || '0' }}
+          PAGE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: python us_screener.py
+      - name: 儲存
+        run: |
+          git config user.name "news-bot"
+          git config user.email "news-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "美股分析 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
+          for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; git rebase --abort 2>/dev/null; sleep 5; done
