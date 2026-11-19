@@ -460,9 +460,10 @@ def render(stocks, mkt, updated, inst_days, sig=()):
         "others": "基本面好壞參半，或基本面不錯但跌得還不多（抗跌）。",
     }
     names = {"oversold": "可能錯殺", "pricey": "跌深・不便宜", "weak": "基本面轉弱", "others": "其他"}
-    nav = "".join(f'<button data-tab="{k}">{names[k]}<b>{len(v)}</b></button>' for k, v in groups.items())
+    nav = '<a class="navlink back" href="./">← 新聞</a><button data-tab="overview">總覽</button>'
+    nav += "".join(f'<button data-tab="{k}">{names[k]}<b>{len(v)}</b></button>' for k, v in groups.items())
     nav += f'<button data-tab="signals">訊號紀錄<b>{len(sig)}</b></button><button data-tab="how">怎麼判斷</button>'
-    body = ""
+    body = overview(stocks, groups, mkt)
     for k, v in groups.items():
         cs = [card(s, i + 1 if k == "oversold" else None) for i, s in enumerate(v)]
         cards = "".join(cs[:15])
@@ -481,6 +482,90 @@ def render(stocks, mkt, updated, inst_days, sig=()):
     with open(os.path.join(ROOT, "stocks.html"), "w", encoding="utf-8") as f:
         f.write(out)
     return groups
+
+
+CAT = {"oversold": ("可能錯殺", "var(--copper)"), "pricey": ("跌深・不便宜", "var(--fog)"),
+       "weak": ("基本面轉弱", "#a5574a"), "strong": ("其他", "#b9b4a8"), "mixed": ("其他", "#b9b4a8")}
+
+
+def overview(stocks, groups, mkt):
+    e = html.escape
+    n = len(stocks) or 1
+    # 1) 分類比例條
+    seg = ""
+    for k in ("oversold", "pricey", "weak", "others"):
+        c = len(groups[k])
+        if c:
+            col = CAT["strong" if k == "others" else k][1]
+            seg += f'<a href="#{k}" data-go="{k}" style="flex:{c};background:{col}" title="{c} 檔"></a>'
+    legend = "".join(f'<span><i style="background:{CAT["strong" if k == "others" else k][1]}"></i>{CAT["strong" if k == "others" else k][0]} {len(groups[k])}</span>'
+                     for k in ("oversold", "pricey", "weak", "others"))
+
+    # 2) 錯殺地圖：橫軸跌幅、縱軸基本面分數
+    W, H, L, B = 340, 250, 30, 26
+    xmin = min(-60, min(s["dd"] for s in stocks) - 2)
+    fmin, fmax = -7, 7
+
+    def X(dd):
+        return L + (dd - xmin) / (0 - xmin) * (W - L - 8)
+
+    def Y(f):
+        return 8 + (fmax - f) / (fmax - fmin) * (H - B - 8)
+    pts = ""
+    top = {s["code"] for s in groups["oversold"][:6]} | {s["code"] for s in groups["weak"][:3]}
+    labels = ""
+    for s in sorted(stocks, key=lambda s: s["cat"] == "oversold"):
+        jitter = (int(s["code"]) % 7 - 3) * 0.09
+        cx, cy = X(s["dd"]), Y(max(fmin, min(fmax, s["fund"] + jitter)))
+        info = f'{s["name"]} {s["code"]}｜跌 {s["dd"]:.1f}%｜基本面 {s["fund"]:+d} 分｜{CAT[s["cat"]][0]}'
+        pts += f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{4.2 if s["code"] in top else 3.3}" fill="{CAT[s["cat"]][1]}" data-i="{e(info)}"/>'
+        if s["code"] in top:
+            labels += f'<text x="{cx + 5:.1f}" y="{cy - 5:.1f}">{e(s["name"])}</text>'
+    x15, y2 = X(DROP_LINE), Y(2)
+    ticks = "".join(f'<text class="ax" x="{X(v):.1f}" y="{H - 8}" text-anchor="middle">{v}%</text>' for v in range(0, int(xmin) - 1, -15))
+    yt = "".join(f'<text class="ax" x="{L - 6}" y="{Y(v) + 4:.1f}" text-anchor="end">{v:+d}</text>' for v in (-6, -3, 0, 3, 6))
+    svg = (f'<svg class="map" viewBox="0 0 {W} {H}" role="img" aria-label="錯殺地圖">'
+           f'<rect x="{L}" y="8" width="{x15 - L:.1f}" height="{y2 - 8:.1f}" class="zone good"/>'
+           f'<rect x="{L}" y="{Y(-2):.1f}" width="{x15 - L:.1f}" height="{H - B - Y(-2):.1f}" class="zone bad"/>'
+           f'<line x1="{x15:.1f}" y1="8" x2="{x15:.1f}" y2="{H - B}" class="rule"/><line x1="{L}" y1="{Y(0):.1f}" x2="{W - 8}" y2="{Y(0):.1f}" class="rule"/>'
+           f'<text class="zl" x="{L + 6}" y="22">錯殺區</text><text class="zl bad" x="{L + 6}" y="{H - B - 8}">有理由的跌</text>'
+           f'<text class="zl mute" x="{W - 12}" y="22" text-anchor="end">抗跌</text>'
+           f'{ticks}{yt}{pts}<g class="lb">{labels}</g></svg>')
+
+    # 3) 產業：每個產業平均跌幅、錯殺 / 轉弱各幾檔
+    ind = {}
+    for s in stocks:
+        ind.setdefault(s.get("industry") or "其他", []).append(s)
+    rows = ""
+    for name, v in sorted(ind.items(), key=lambda kv: sum(x["dd"] for x in kv[1]) / len(kv[1])):
+        if len(v) < 2:
+            continue
+        avg = sum(x["dd"] for x in v) / len(v)
+        ov = sum(1 for x in v if x["cat"] == "oversold")
+        wk = sum(1 for x in v if x["cat"] == "weak")
+        rows += (f'<tr><th>{e(name)}<small>{len(v)} 檔</small></th>'
+                 f'<td><div class="hb"><i style="width:{min(100, -avg / 50 * 100):.0f}%"></i></div><b>{avg:.1f}%</b></td>'
+                 f'<td class="c">{ov or "·"}</td><td class="w">{wk or "·"}</td></tr>')
+    table = f'<table class="ind-t"><tr><th>產業</th><th>平均跌幅</th><th>錯殺</th><th>轉弱</th></tr>{rows}</table>'
+
+    def mini(lst, k):
+        return "".join(f'<li><a href="#{k}" data-go="{k}"><b>{e(s["name"])}</b><em>{s["code"]}</em>'
+                       f'<span>{s["dd"]:+.0f}%</span></a></li>' for s in lst[:5])
+    return f'''<section id="overview">
+<div class="card ov"><h2>今天 150 檔的樣子</h2>
+<p class="note2">加權指數距三個月高點 {mkt["dd"]:+.1f}%。150 檔裡，各類別各有幾檔：</p>
+<div class="seg">{seg}</div><div class="legend">{legend}</div></div>
+<div class="card ov"><h2>錯殺地圖</h2>
+<p class="note2">每個點是一檔股票。越往左跌越多，越往上基本面越好。<b>左上角</b>＝跌很多、公司卻還在成長，最可能是錯殺；<b>左下角</b>＝跌有理由。點一下圓點看是哪一檔。</p>
+{svg}<p class="tip" id="tip">點圓點看名稱</p></div>
+<div class="duo">
+<div class="card ov"><h2>錯殺前五名</h2><ol class="mini">{mini(groups["oversold"], "oversold")}</ol></div>
+<div class="card ov"><h2>轉弱前五名</h2><ol class="mini weak">{mini(groups["weak"], "weak")}</ol></div>
+</div>
+<div class="card ov"><h2>各產業跌多少</h2>
+<p class="note2">只列 150 檔裡至少有 2 檔的產業，跌最多的在上面。同一個產業如果「錯殺」多、「轉弱」少，代表是整個族群被一起賣，不是基本面出問題。</p>
+{table}</div>
+</section>'''
 
 
 def signals_html(sig):
@@ -596,7 +681,7 @@ def track(stocks, date, after_close):
                  "rev_yoy": s.get("rev_yoy"), "eps_yoy": s.get("eps_yoy"), "gm": s.get("gm"), "gm_yoy": s.get("gm_yoy"),
                  "pe": s.get("pe"), "pb": s.get("pb"), "val_rank": rank, "foreign": s.get("foreign"), "trust": s.get("trust"),
                  "flags": s["flags"], "reasons": [t for _, t in s["reasons"]], "rev6": s.get("rev6"), "q5": s.get("q5")}
-            x["strength"] = "強" if kind == "轉弱" or (s["fund"] >= 7 and rank <= 0.05) else "中"
+            x["strength"] = "強" if kind == "轉弱" or (s["fund"] >= 6 and rank <= 0.05) else "中"
             sig.append(x)
             new.append(x)
     save("data/signals.json", sig)
