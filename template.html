@@ -57,8 +57,6 @@ header.hero{padding-top:env(safe-area-inset-top);
 .brand small{font:600 12px "Cormorant Garamond",serif;letter-spacing:.38em;color:var(--fogdeep);margin-bottom:6px}
 h1{margin:0;font:700 26px "Noto Serif TC",serif;letter-spacing:.12em;color:var(--text)}
 h1 i{font-style:normal;color:var(--copper)}
-.radar{display:inline-block;margin-bottom:8px;font:500 12.5px "Noto Sans TC",sans-serif;color:var(--copper);border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:#ffffff8c;letter-spacing:.02em}
-@media (prefers-color-scheme:dark){.radar{background:#ffffff0d}}
 .upd{font:500 12px "Cormorant Garamond","Noto Sans TC",serif;color:var(--sub);letter-spacing:.06em;text-align:right}
 .stripe{height:6px;background:repeating-linear-gradient(90deg,var(--fog) 0 14px,var(--fog2) 14px 22px,#6f7f8f 22px 23px,var(--fog2) 23px 34px);opacity:.75}
 nav{display:flex;gap:8px;overflow-x:auto;padding:12px 16px;scrollbar-width:none;
@@ -123,7 +121,7 @@ details.others{margin-top:22px;border:1px dashed var(--line);border-radius:16px;
 <header class="hero">
   <div class="top">
     <div class="brand"><small>DAILY BRIEF</small><h1>每日<i>財經</i></h1></div>
-    <div class="upd"><a class="radar" href="stocks.html">錯殺股雷達 →</a><br>UPDATED<br>{{UPDATED}}</div>
+    <div class="upd">UPDATED<br>{{UPDATED}}</div>
   </div>
   <div class="panel">
     <div class="wx" id="wx">
@@ -143,7 +141,7 @@ details.others{margin-top:22px;border:1px dashed var(--line);border-radius:16px;
   </div>
   <div class="stripe"></div>
 </header>
-<div class="navwrap"><nav>{{NAV}}<a class="navlink" href="stocks.html">錯殺股 ↗</a></nav></div>
+<div class="navwrap"><nav>{{NAV}}<a class="navlink" href="stocks.html">台股分析 ↗</a></nav></div>
 <main>{{BODY}}</main>
 <button id="totop" aria-label="回到頂端">↑</button>
 <script>

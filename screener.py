@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""錯殺股雷達：每天收盤後，把台灣市值前 150 大上市公司（約等於台灣50＋中型100）
+"""台股分析（錯殺股篩選）：每天收盤後，把台灣市值前 150 大上市公司（約等於台灣50＋中型100）
 分成「可能被錯殺」「基本面轉弱」「其他」，輸出 stocks.html 並用 Telegram 推播重點。
 
 只用 Python 內建套件。資料來源（全部免費）：
@@ -514,12 +514,14 @@ def overview(stocks, groups, mkt):
     pts = ""
     top = {s["code"] for s in groups["oversold"][:6]} | {s["code"] for s in groups["weak"][:3]}
     labels = ""
+    placed = []
     for s in sorted(stocks, key=lambda s: s["cat"] == "oversold"):
         jitter = (int(s["code"]) % 7 - 3) * 0.09
         cx, cy = X(s["dd"]), Y(max(fmin, min(fmax, s["fund"] + jitter)))
         info = f'{s["name"]} {s["code"]}｜跌 {s["dd"]:.1f}%｜基本面 {s["fund"]:+d} 分｜{CAT[s["cat"]][0]}'
         pts += f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{4.2 if s["code"] in top else 3.3}" fill="{CAT[s["cat"]][1]}" data-i="{e(info)}"/>'
-        if s["code"] in top:
+        if s["code"] in top and all(abs(cx - px) > 34 or abs(cy - py) > 12 for px, py in placed):
+            placed.append((cx, cy))
             labels += f'<text x="{cx + 5:.1f}" y="{cy - 5:.1f}">{e(s["name"])}</text>'
     x15, y2 = X(DROP_LINE), Y(2)
     ticks = "".join(f'<text class="ax" x="{X(v):.1f}" y="{H - 8}" text-anchor="middle">{v}%</text>' for v in range(0, int(xmin) - 1, -15))
