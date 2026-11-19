@@ -1,0 +1,16 @@
+name: 美股資料測試
+on:
+  push:
+    branches: [claude/project-thread-gatn3q]
+    paths: [probe/probe.sh]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash probe/probe.sh
+      - run: |
+          git config user.name "news-bot"; git config user.email "news-bot@users.noreply.github.com"
+          git add probe/out; git commit -m "probe" -q; git push
