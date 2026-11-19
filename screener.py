@@ -796,6 +796,9 @@ def track(stocks, date, after_close):
                  "pe": s.get("pe"), "pb": s.get("pb"), "val_rank": rank, "foreign": s.get("foreign"), "trust": s.get("trust"),
                  "flags": s["flags"], "reasons": [t for _, t in s["reasons"]], "rev6": s.get("rev6"), "q5": s.get("q5")}
             x["strength"] = "強" if kind == "轉弱" or (s["fund"] >= 6 and rank <= 0.05) else "中"
+            if OPT.get("support"):
+                pcv = (OPT.get("pc") or [[0, None]])[-1][1]
+                x["opt_note"] = (f"支撐 {OPT['support']:,}・壓力 {OPT['resist']:,}" + (f"・P/C 成交比 {pcv:.0f}%" if pcv else ""))
             # 初步訊號只有「強」才當天推播；確認訊號一律推播
             x["notify"] = stage == "確認" or x["strength"] == "強"
             sig.append(x)
@@ -894,7 +897,11 @@ def main():
         s.pop("hist", None)
         stocks.append(s)
 
-    opt = options(last_date, mkt["last"])
+    opt = {}
+    for d in [x for x, _ in idx[-3:]][::-1]:   # 當天資料還沒出來就用前一個交易日
+        opt = options(d, mkt["last"])
+        if opt.get("call_oi"):
+            break
     OPT.update(opt)
     print("options", {k: v for k, v in opt.items() if k not in ("bins", "pc")})
     save("data/options.json", opt)
