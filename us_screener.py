@@ -740,7 +740,7 @@ def detail(s):
 <p class="note2">橫軸是到期天數，縱軸是價平隱含波動度。正常是往右上升（越久越不確定）；<b>左邊翹高（倒掛）</b>代表市場在為最近的下跌或事件付高價。'''\
         + (f'30 天 {o["atm30"]:.1f}%、90 天 {o["atm90"]:.1f}%。' if o.get("atm30") and o.get("atm90") else "") \
         + ('灰色虛線是前一天。' if prev.get("term") else "") + f'''</p>{term_svg(s)}
-<p class="src">選擇權資料時間（美東）：{E(o.get("asof", "—"))}・未平倉是前一個交易日結算後的數字</p>
+<p class="src">選擇權資料時間（美東）：{E((o.get("asof") or "—").replace("T", " "))}・未平倉是前一個交易日結算後的數字</p>
 </div></details>'''
 
 
@@ -779,8 +779,8 @@ def overview(stocks, mkt, sig):
         prev = s.get("prev") or {}
         dsk = (o["skew"] - prev["skew"]) if o.get("skew") is not None and prev.get("skew") is not None else None
         doi = (o["oi"] / prev["oi"] - 1) * 100 if o.get("oi") and prev.get("oi") else None
-        rows += (f'<tr><th><a href="#{s["sym"].replace("/", "")}" data-go="stocks" data-to="{s["sym"].replace("/", "")}">{E(s["zh"])}<small>{E(s["sym"])}</small></a></th>'
-                 f'<td>{money(s["price"])}<small class="{tone(s["chg"])}">{s["chg"]:+.1f}%</small></td>'
+        rows += (f'<tr><th><a href="#{s["sym"].replace("/", "")}" data-go="stocks" data-to="{s["sym"].replace("/", "")}">{E(s["zh"])} <em>{E(s["sym"])}</em></a>'
+                 f'<small>{money(s["price"])} <span class="{tone(s["chg"])}">{s["chg"]:+.1f}%</span></small></th>'
                  f'<td class="{cls}">{("−" if s["price"] < f["lo"] else "") + (f"{abs(f["dist"]):.1f}%" if f else "—") if f else "—"}<small>{stt}</small></td>'
                  f'<td>{(o.get("iv30") or 0):.0f}%<small>{"" if o.get("iv30_chg") is None else f"{o["iv30_chg"]:+.1f}"}</small></td>'
                  f'<td>{"—" if o.get("skew") is None else f"{o["skew"]:.1f}"}<small class="{tone(-dsk) if dsk is not None else ""}">{"" if dsk is None else f"{dsk:+.1f}"}</small></td>'
@@ -793,7 +793,7 @@ def overview(stocks, mkt, sig):
         if not f:
             continue
         lo = min(f["lo"], s["price"]) * 0.97
-        hi = max(o.get("call_wall") or s["price"] * 1.08, s["price"] * 1.04)
+        hi = max(o.get("call_wall") or s["price"] * 1.08, s["price"] * 1.04) * 1.03
         P = lambda v: max(0, min(100, (v - lo) / (hi - lo) * 100))
         bars += (f'<div class="gb"><a href="#{s["sym"].replace("/", "")}" data-go="stocks" data-to="{s["sym"].replace("/", "")}">{E(s["sym"])}</a><div class="tr">'
                  f'<i class="fz" style="left:{P(f["lo"]):.1f}%;width:{max(1.5, P(f["hi"]) - P(f["lo"])):.1f}%"></i>'
@@ -814,7 +814,7 @@ def overview(stocks, mkt, sig):
 <div class="card ov"><h2>今天重點</h2><p class="note2">{"<br>".join(lines)}</p>
 <h3 class="sub3">現價離地板多遠</h3><p class="note2">每一條是一檔股票：<b style="color:var(--copper)">銅色帶</b>是第一道地板，圓點是現在的價格，細直線是上方買權未平倉最多的價位（壓力）。點代號看完整分析。</p>
 <div class="gauge">{bars}</div></div>
-<div class="card ov"><h2>十檔一覽</h2><div class="tw"><table class="ind-t us"><tr><th>股票</th><th>收盤</th><th>距地板</th><th>IV30<small>變化</small></th><th>偏斜<small>變化</small></th><th>未平倉<small>變化</small></th></tr>{rows}</table></div>
+<div class="card ov"><h2>十檔一覽</h2><div class="tw"><table class="ind-t us"><tr><th>股票・收盤</th><th>距地板</th><th>IV30<small>變化</small></th><th>偏斜<small>變化</small></th><th>未平倉<small>變化</small></th></tr>{rows}</table></div>
 <p class="note2" style="margin-top:10px">IV30＝30 天隱含波動度（選擇權認為未來一個月會晃多大）。偏斜＝下跌保險比上漲押注貴多少，<b>升高代表大家在怕跌</b>。未平倉＝還沒結清的選擇權口數。</p></div>
 </section>'''
 
