@@ -332,9 +332,10 @@ def floors(price, vp, vp_y, o):
             mid = (nd["lo"] + nd["hi"]) / 2
             if mid < price * 0.995 and mid > price * 0.75:
                 cands.append({"lo": nd["lo"], "hi": nd["hi"], "mid": round(mid, 2), "w": nd["w"], "src": [src]})
-    if not cands and vp:
-        cands.append({"lo": vp["val"], "hi": vp["val"] + vp["step"], "mid": vp["val"] + vp["step"] / 2, "w": 0.4,
-                      "src": ["3 個月價值區下緣"]})
+    pw0 = (o or {}).get("put_wall")
+    if pw0 and price * 0.75 < pw0 < price * 0.995 and not any(c["lo"] * 0.985 <= pw0 <= c["hi"] * 1.015 for c in cands):
+        st = (vp or vp_y or {}).get("step") or pw0 * 0.01
+        cands.append({"lo": pw0 - st / 2, "hi": pw0 + st / 2, "mid": pw0, "w": 0.3, "src": []})
     # 合併很接近的候選（3% 以內）
     cands.sort(key=lambda c: -c["mid"])
     merged = []
