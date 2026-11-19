@@ -208,8 +208,8 @@ def vprofile(bars, nbin=24, unit=None):
         return None
     lo, hi = min(l for _, l, _ in bars), max(h for h, _, _ in bars)
     if unit:
-        step = max(unit, math.ceil((hi - lo) / nbin / unit) * unit)
-        step = next((x for x in (50, 100, 200, 250, 500, 1000, 2000) if x >= step), step)
+        raw = (hi - lo) / nbin
+        step = min((x for x in (50, 100, 200, 250, 500, 1000, 2000) if x >= unit), key=lambda x: abs(x - raw))
         lo = math.floor(lo / step) * step
         nbin = max(1, math.ceil((hi - lo) / step))
     else:
