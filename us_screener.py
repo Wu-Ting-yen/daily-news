@@ -32,7 +32,7 @@ SKIP = {"BRK/A", "GOOGL"}
 FIXTURE = os.environ.get("FIXTURE")     # 本機測試：用 probe/out 的樣本資料
 
 ZH = {"AAPL": "蘋果", "MSFT": "微軟", "NVDA": "輝達", "GOOG": "Google", "AMZN": "亞馬遜", "SPCX": "SpaceX",
-      "AVGO": "博通", "META": "Meta", "TSLA": "特斯拉", "LLY": "禮來", "BRK/B": "波克夏", "WMT": "沃爾瑪",
+      "AVGO": "博通", "TSM": "台積電 ADR", "SKHY": "SK 海力士", "ASML": "艾司摩爾", "BABA": "阿里巴巴", "NVO": "諾和諾德", "META": "Meta", "TSLA": "特斯拉", "LLY": "禮來", "BRK/B": "波克夏", "WMT": "沃爾瑪",
       "JPM": "摩根大通", "V": "Visa", "ORCL": "甲骨文", "NFLX": "Netflix", "XOM": "埃克森美孚", "MA": "萬事達卡",
       "COST": "好市多", "PLTR": "Palantir", "AMD": "超微", "JNJ": "嬌生", "UNH": "聯合健康", "HD": "家得寶",
       "PG": "寶僑", "BAC": "美國銀行", "ABBV": "艾伯維", "KO": "可口可樂", "CRM": "Salesforce", "MU": "美光"}
@@ -87,13 +87,13 @@ def save(path, obj):
 
 
 def universe():
-    """美國公司市值前 N 大（同一家公司只取一檔；外國公司的 ADR 不算，例如台積電已經在台股分析裡）"""
+    """在美國掛牌的股票市值前 N 大（同一家公司只取一檔；台積電 TSM 這類外國公司的 ADR 也算）"""
     j = get("https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=10000&offset=0&download=true")
     rows = (((j or {}).get("data") or {}).get("rows")) or []
     out, seen = [], set()
     for r in sorted((r for r in rows if r.get("marketCap")), key=lambda r: -float(r["marketCap"] or 0)):
         sym = r["symbol"].strip()
-        if r.get("country") != "United States" or sym in SKIP or "^" in sym:
+        if sym in SKIP or "^" in sym:
             continue
         key = re.sub(r"\s+(Class [A-Z]\b|Common Stock|Capital Stock|Ordinary Shares).*", "", r["name"]).strip(" .,")
         if key in seen:
@@ -836,7 +836,7 @@ def signals_html(sig):
 
 
 HOW = '''<section id="how"><div class="card how">
-<h2>看哪些股票</h2><p>每天抓美國公司市值前 10 大（Nasdaq 股票篩選器）。同一家公司有兩種股票時只看一檔：Alphabet 看 <b>GOOG</b>（不看 GOOGL）。外國公司在美國掛牌的 ADR（例如台積電 TSM）不算，台積電已經在台股分析裡。</p>
+<h2>看哪些股票</h2><p>每天抓在美國掛牌的股票市值前 10 大（Nasdaq 股票篩選器），台積電 TSM 這類外國公司的 ADR 也算。同一家公司有兩種股票時只看一檔：Alphabet 看 <b>GOOG</b>（不看 GOOGL）。</p>
 <h2>地板怎麼找</h2><ol>
 <li><b>成交量分佈（Volume Profile）</b>：把近 3 個月每一小時的成交量，平均分到那一小時的最低價到最高價之間，累加起來。成交特別多的價位（山峰）代表很多人的成本在這裡，跌到這裡常會有人接。也另外看一年的日線分佈。</li>
 <li><b>賣權未平倉</b>：所有到期日加總，看哪個履約價的賣權（下跌保險）堆最多。很多人在這個價位買保險或賣保險，造市商避險的買盤也常在這裡出現。</li>

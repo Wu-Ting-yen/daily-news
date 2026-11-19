@@ -360,7 +360,7 @@ details.full{border-top:1px solid var(--line)}
     hit.sort(function(x,y){return (x.dataset.code.toLowerCase()===lv||x.dataset.name===v?0:1)-(y.dataset.code.toLowerCase()===lv||y.dataset.name===v?0:1)});
     sres.innerHTML='';
     if(!hit.length){
-      sres.innerHTML='<div class="smiss">「'+esc(v)+'」不在這裡追蹤的 10 檔裡（美國公司市值前 10 大）。<br>可以先到 <a href="https://finance.yahoo.com/quote/'+encodeURIComponent(v.toUpperCase())+'" target="_blank" rel="noopener">Yahoo Finance 看這檔 ↗</a>，或告訴我把它加進追蹤名單。</div>';
+      sres.innerHTML='<div class="smiss">「'+esc(v)+'」不在這裡追蹤的 10 檔裡（在美國掛牌的市值前 10 大）。<br>可以先到 <a href="https://finance.yahoo.com/quote/'+encodeURIComponent(v.toUpperCase())+'" target="_blank" rel="noopener">Yahoo Finance 看這檔 ↗</a>，或告訴我把它加進追蹤名單。</div>';
       return}
     var p=document.createElement('p');p.className='shint';
     p.innerHTML='找到 <b>'+hit.length+'</b> 檔'+('')+'。點「完整分析」看細節。';
