@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>錯殺股雷達</title>
+<meta name="theme-color" content="#ecebe6">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* 米白灰泥 × 霧藍 × 銅 */
+  --plaster:#ecebe6;--plaster2:#e2e0d9;--card:#fbfaf7e6;--text:#2b3440;--sub:#7c8590;--line:#d9d7cf;
+  --fog:#8ea3b6;--fog2:#b9c7d4;--fogdeep:#5f7487;--copper:#8b5a3c;--copper2:#b07a55;
+  --shadow:0 1px 1px #3a33280a,0 6px 18px #3a33280f;
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .33 0 0 0 0 .3 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --stucco:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.045' numOctaves='4' seed='7'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='2.2'%3E%3CfeDistantLight azimuth='225' elevation='52'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme:dark){:root{
+  --plaster:#1d2127;--plaster2:#171a1f;--card:#252a31e6;--text:#e7e4dc;--sub:#9aa1a9;--line:#343a43;
+  --fog:#7f95a9;--fog2:#4a5a6a;--fogdeep:#a9bccd;--copper:#c98f66;--copper2:#d9a47e;--shadow:none;
+}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;color:var(--text);background:var(--plaster);
+  font-family:"Noto Sans TC",-apple-system,"PingFang TC",sans-serif;font-size:16px;line-height:1.6;letter-spacing:.02em}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--grain);opacity:.18;pointer-events:none}
+
+/* 頂部：灰泥牆浮雕 + 霧藍果凍條紋 */
+.navwrap{position:sticky;top:0;z-index:5;padding-top:env(safe-area-inset-top);
+  background:var(--stucco) center/300px,var(--plaster);background-blend-mode:multiply;box-shadow:0 1px 0 var(--line),0 8px 20px -12px #3a332833}
+@media (prefers-color-scheme:dark){.navwrap{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
+.panel{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 14px}
+.wx,.fx{border-radius:16px;padding:12px 14px;background:#ffffff8f;border:1px solid #ffffffb0;backdrop-filter:blur(6px);
+  box-shadow:0 4px 14px -8px #3a332840;min-width:0}
+@media (prefers-color-scheme:dark){.wx,.fx{background:#ffffff10;border-color:#ffffff18}}
+.lbl{font-size:12px;color:var(--fogdeep);letter-spacing:.08em}
+.now{display:flex;align-items:center;gap:8px;margin:2px 0}
+.ico{font-size:26px;line-height:1}
+.now .t small{font:500 14px 'Noto Sans TC',sans-serif;color:var(--sub);vertical-align:top;margin-left:2px}
+.now .t{font:600 34px/1.1 "Cormorant Garamond",serif;color:var(--text)}
+.sub{font-size:12.5px;color:var(--sub);line-height:1.5}
+.stars{color:var(--copper);font-size:17px;letter-spacing:2px;margin:4px 0 2px}
+.stars span{font-size:12px;color:var(--sub);letter-spacing:0;margin-left:4px}
+.note{font:500 13px/1.5 "Noto Serif TC",serif;color:var(--text);margin-top:4px}
+header.hero{padding-top:env(safe-area-inset-top);
+  background:var(--stucco) center/300px,var(--plaster);background-blend-mode:multiply;
+  box-shadow:0 1px 0 var(--line),0 8px 20px -12px #3a332833}
+@media (prefers-color-scheme:dark){header.hero{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
+.top{display:flex;align-items:flex-end;justify-content:space-between;padding:16px 20px 12px}
+.brand{display:flex;flex-direction:column;line-height:1.1}
+.brand small{font:600 12px "Cormorant Garamond",serif;letter-spacing:.38em;color:var(--fogdeep);margin-bottom:6px}
+h1{margin:0;font:700 26px "Noto Serif TC",serif;letter-spacing:.12em;color:var(--text)}
+h1 i{font-style:normal;color:var(--copper)}
+.upd{font:500 12px "Cormorant Garamond","Noto Sans TC",serif;color:var(--sub);letter-spacing:.06em;text-align:right}
+.stripe{height:6px;background:repeating-linear-gradient(90deg,var(--fog) 0 14px,var(--fog2) 14px 22px,#6f7f8f 22px 23px,var(--fog2) 23px 34px);opacity:.75}
+nav{display:flex;gap:8px;overflow-x:auto;padding:12px 16px;scrollbar-width:none;
+  background:linear-gradient(180deg,#ffffff55,#ffffff00)}
+@media (prefers-color-scheme:dark){nav{background:none}}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer;
+  font:500 14px "Noto Sans TC",sans-serif;color:var(--fogdeep);background:#ffffff8c;display:flex;gap:6px;align-items:center;
+  backdrop-filter:blur(6px)}
+@media (prefers-color-scheme:dark){nav button{background:#ffffff0d}}
+nav button b{font:600 13px "Cormorant Garamond",serif;color:var(--sub)}
+nav button.on{color:#fff;border-color:transparent;
+  background:linear-gradient(180deg,#ffffff30,#ffffff00),repeating-linear-gradient(90deg,var(--fog) 0 10px,#9fb2c3 10px 17px);
+  box-shadow:inset 0 1px 0 #ffffff60,0 3px 10px -4px var(--fogdeep)}
+nav button.on b{color:#ffffffd0}
+nav button[data-tab=oversold]::before{content:"";width:8px;height:8px;border-radius:2px 4px 3px 5px;background:var(--copper);transform:rotate(18deg)}
+
+
+main{max-width:720px;margin:0 auto;padding:16px 16px calc(48px + env(safe-area-inset-bottom))}
+section{display:none}
+section.on{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+a{color:inherit;text-decoration:none}
+.back{font:500 12.5px "Noto Sans TC",sans-serif;color:var(--fogdeep);border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:#ffffff8c;white-space:nowrap}
+@media (prefers-color-scheme:dark){.back{background:#ffffff0d}}
+.mk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 16px 14px}
+.mk>div{border-radius:14px;padding:10px 12px;background:#ffffff8f;border:1px solid #ffffffb0;backdrop-filter:blur(6px);box-shadow:0 4px 14px -8px #3a332840;min-width:0}
+@media (prefers-color-scheme:dark){.mk>div{background:#ffffff10;border-color:#ffffff18}}
+.mk b{display:block;font:600 26px/1.15 "Cormorant Garamond",serif;color:var(--text);margin-top:2px}
+.mk small{font-size:12px;color:var(--sub)}
+.up{color:#b0453a!important}.down{color:#3f7a5a!important}
+.lead{font:500 14px/1.7 "Noto Serif TC",serif;color:var(--sub);margin:4px 2px 14px}
+.card{background:var(--card);backdrop-filter:blur(4px);border-radius:18px;box-shadow:var(--shadow);
+  border:1px solid #ffffffaa;margin-bottom:12px;overflow:hidden;position:relative}
+@media (prefers-color-scheme:dark){.card{border-color:var(--line)}}
+.stock .head{display:flex;align-items:flex-start;gap:12px;padding:16px 18px 4px}
+.stock .no{font:600 15px "Cormorant Garamond",serif;color:var(--copper);padding-top:3px;min-width:20px}
+.nm{flex:1;min-width:0}
+.nm h3{margin:0;font:700 17px/1.4 "Noto Serif TC",serif;letter-spacing:.06em}
+.nm h3 em{font:600 14px "Cormorant Garamond",serif;font-style:normal;color:var(--sub);letter-spacing:.04em;margin-left:2px}
+.ind{font-size:12.5px;color:var(--fogdeep);margin-top:2px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.flag{font-size:11.5px;color:#fff;background:#a5574a;border-radius:6px;padding:0 6px;line-height:1.7}
+.px{text-align:right;flex:none}
+.dd{font:600 30px/1 "Cormorant Garamond",serif;color:var(--copper)}
+.dd small{font-size:16px;margin-left:1px}
+.p{font-size:11.5px;color:var(--sub);margin-top:4px}
+.mid{display:flex;align-items:center;justify-content:space-between;padding:4px 18px 8px;color:var(--fogdeep)}
+.spark{width:150px;height:36px;overflow:visible}
+.spark .hi{fill:var(--copper)}
+.gems{color:var(--copper);font-size:14px;letter-spacing:3px}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;padding:0 18px 14px}
+.chip{border:1px solid var(--line);border-radius:12px;padding:6px 10px;background:#ffffff70;min-width:0}
+@media (prefers-color-scheme:dark){.chip{background:#ffffff08}}
+.chip span{display:block;font-size:11.5px;color:var(--sub)}
+.chip b{font:600 15px "Noto Sans TC",sans-serif;color:var(--text)}
+.chip.up b{color:#b0453a}.chip.down b{color:#3f7a5a}
+.chip small{font-size:11px;color:var(--sub);font-weight:400}
+details{border-top:1px solid var(--line)}
+summary{list-style:none;padding:11px 18px;font-size:13px;color:var(--sub);cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"＋";color:var(--copper);font-size:15px}
+details[open] summary::after{content:"－"}
+.why{list-style:none;margin:0;padding:0 18px 14px}
+.why li{display:flex;gap:10px;font-size:14px;padding:5px 0;line-height:1.55}
+.why li+li{border-top:1px dashed var(--line)}
+.why i{font-style:normal;flex:none;width:14px;text-align:center;font-weight:700}
+.why .good i{color:#b0453a}.why .bad i{color:#3f7a5a}.why .mid i{color:var(--sub)}
+.stock.weak .dd{color:var(--fogdeep)}
+.how{padding:18px 20px}
+.how h2{font:700 17px "Noto Serif TC",serif;letter-spacing:.08em;margin:18px 0 6px;color:var(--text)}
+.how h2:first-child{margin-top:0}
+.how h2::before{content:"";display:inline-block;width:9px;height:8px;border-radius:2px 4px 3px 5px;background:var(--copper);transform:rotate(18deg);margin-right:8px;vertical-align:2px}
+.how p,.how li{font-size:14.5px;line-height:1.8}
+.how ol,.how ul{padding-left:20px;margin:6px 0}
+.how .src{font-size:12.5px;color:var(--sub)}
+.disc{font:500 13.5px "Noto Serif TC",serif;color:var(--copper);border-top:1px dashed var(--line);padding-top:10px}
+.foot{text-align:center;font-size:12px;color:var(--sub);margin-top:20px}
+.empty{color:var(--sub);text-align:center;padding:48px 0}
+#totop{position:fixed;right:18px;bottom:calc(22px + env(safe-area-inset-bottom));width:46px;height:46px;border-radius:50%;
+  border:1px solid #ffffff90;color:#fff;font-size:18px;cursor:pointer;
+  background:repeating-linear-gradient(90deg,var(--fog) 0 8px,#9fb2c3 8px 14px);
+  box-shadow:0 6px 16px -6px var(--fogdeep);opacity:0;pointer-events:none;transition:.25s}
+#totop.show{opacity:1;pointer-events:auto}
+@media (max-width:380px){.mk b{font-size:22px}.dd{font-size:26px}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="top">
+    <div class="brand"><small>OVERSOLD RADAR</small><h1>錯殺股<i>雷達</i></h1></div>
+    <div class="upd"><a class="back" href="./">← 回新聞</a><br><span style="display:inline-block;margin-top:8px">UPDATED<br>{{UPDATED}}</span></div>
+  </div>
+  {{SUMMARY}}
+  <div class="stripe"></div>
+</header>
+<div class="navwrap"><nav>{{NAV}}</nav></div>
+<main>{{BODY}}<p class="foot">每個交易日收盤後更新・篩選結果，不是投資建議</p></main>
+<button id="totop" aria-label="回到頂端">↑</button>
+<script>
+(function(){
+  var btns=[].slice.call(document.querySelectorAll('nav button'));
+  var secs=[].slice.call(document.querySelectorAll('main section'));
+  function show(id){
+    btns.forEach(function(b){b.classList.toggle('on',b.dataset.tab===id)});
+    secs.forEach(function(s){s.classList.toggle('on',s.id===id)});
+    var nw=document.querySelector('.navwrap');if(scrollY>nw.offsetTop)window.scrollTo(0,nw.offsetTop);
+    try{localStorage.setItem('stab',id)}catch(e){}
+  }
+  btns.forEach(function(b){b.onclick=function(){show(b.dataset.tab)}});
+  var saved=null;try{saved=localStorage.getItem('stab')}catch(e){}
+  show(location.hash.slice(1)||(saved&&document.getElementById(saved)?saved:'oversold'));
+  var top=document.getElementById('totop');
+  window.addEventListener('scroll',function(){top.classList.toggle('show',scrollY>600)},{passive:true});
+  top.onclick=function(){window.scrollTo({top:0,behavior:'smooth'})};
+})();
+</script>
+</body>
+</html>
