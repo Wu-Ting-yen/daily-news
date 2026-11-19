@@ -558,7 +558,8 @@ def big(v):
         return "—"
     for n, u in ((1e12, " 兆"), (1e8, " 億"), (1e4, " 萬")):
         if abs(v) >= n:
-            return f"{v / n:,.1f}{u}" if n == 1e12 else f"{v / n:,.0f}{u}" if n == 1e8 else f"{v / n:,.1f}{u}"
+            x = v / n
+            return f"{x:,.1f}{u}" if abs(x) < 1000 else f"{x:,.0f}{u}"
     return f"{v:,.0f}"
 
 
