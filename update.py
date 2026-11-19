@@ -107,7 +107,7 @@ def cluster(items, threshold=0.18):
         wt = weight(tk)
         best, best_sc = None, 0
         for g in groups:
-            for mt, mw in g["t"][-4:]:
+            for mt, mw in g["t"][:3]:
                 sc = weight(tk & mt) / max(1e-9, (wt * mw) ** 0.5)
                 if sc > best_sc:
                     best, best_sc = g, sc
@@ -181,30 +181,31 @@ def render(cfg, store, updated):
         if id(g) not in shown and sec in by_sec and len(by_sec[sec]) < cfg["max_items_per_section"]:
             by_sec[sec].append(g)
 
+    def ago(iso):
+        return f'<time datetime="{iso}">{datetime.fromisoformat(iso).strftime("%m/%d %H:%M")}</time>'
+
     def card(g):
-        g = sorted(g, key=lambda x: x["time"], reverse=True)
-        it = g[0]
-        t = datetime.fromisoformat(it["time"]).strftime("%m/%d %H:%M")
-        out = (f'<li><a href="{html.escape(it["link"])}" target="_blank" rel="noopener">'
-               f'<span class="t">{html.escape(it["title"])}</span>'
-               f'<span class="m">{html.escape(it["source"])} · {t} · 閱讀原文 ›</span></a>')
+        it = g[0]  # 最早報導、最能代表這個話題的那則當標題，其餘依時間新到舊
+        g = [it] + sorted(g[1:], key=lambda x: x["time"], reverse=True)
+        hot = " hot" if any(x.get("alert") for x in g) else ""
+        out = (f'<article class="card{hot}"><a class="main" href="{html.escape(it["link"])}" target="_blank" rel="noopener">'
+               f'<h3>{html.escape(it["title"])}</h3>'
+               f'<div class="meta"><span class="src">{html.escape(it["source"])}</span>{ago(it["time"])}</div></a>')
         if len(g) > 1:
-            out += f'<details><summary>相關報導 {len(g) - 1} 則</summary>'
+            out += f'<details><summary>另有 {len(g) - 1} 則相關報導</summary><div class="rels">'
             for x in g[1:]:
                 out += (f'<a class="rel" href="{html.escape(x["link"])}" target="_blank" rel="noopener">'
-                        f'{html.escape(x["title"])}<span class="m">{html.escape(x["source"])} · '
-                        f'{datetime.fromisoformat(x["time"]).strftime("%m/%d %H:%M")}</span></a>')
-            out += "</details>"
-        return out + "</li>"
+                        f'<span>{html.escape(x["title"])}</span>'
+                        f'<div class="meta"><span class="src">{html.escape(x["source"])}</span>{ago(x["time"])}</div></a>')
+            out += "</div></details>"
+        return out + "</article>"
 
-    nav = "".join(f'<a href="#{s["id"]}">{html.escape(s["name"])}</a>' for s in cfg["sections"])
+    tabs = [("alerts", "🔔 重大快訊", alerts)] + [(s["id"], s["name"], by_sec[s["id"]]) for s in cfg["sections"]]
+    nav = "".join(f'<button data-tab="{i}">{html.escape(n)}<b>{len(l)}</b></button>' for i, n, l in tabs)
     body = ""
-    if alerts:
-        body += '<section id="alerts" class="hot"><h2>🔔 重大快訊</h2><ul>' + "".join(card(i) for i in alerts) + "</ul></section>"
-    for s in cfg["sections"]:
-        lst = by_sec[s["id"]]
-        body += (f'<section id="{s["id"]}"><h2>{html.escape(s["name"])}</h2><ul>'
-                 + ("".join(card(i) for i in lst) or '<li class="empty">目前沒有新消息</li>') + "</ul></section>")
+    for i, n, l in tabs:
+        body += (f'<section id="{i}" data-name="{html.escape(n)}">'
+                 + ("".join(card(g) for g in l) or '<p class="empty">目前沒有新消息</p>') + "</section>")
 
     tpl = open(os.path.join(ROOT, "template.html"), encoding="utf-8").read()
     out = tpl.replace("{{UPDATED}}", updated).replace("{{NAV}}", nav).replace("{{BODY}}", body)
@@ -234,7 +235,7 @@ def main():
         for it in items:
             nt = norm(it["title"])
             if (datetime.fromisoformat(it["time"]) < cutoff or it["id"] in store or nt in titles
-                    or any(b in it["title"] or b in it["source"] for b in block)):
+                    or any(b.lower() in it["source"].lower() for b in block)):
                 continue
             titles.add(nt)
             if any(k in it["title"].lower() for k in kws):
@@ -250,7 +251,8 @@ def main():
                     and datetime.fromisoformat(lead["time"]) > now - timedelta(hours=6)):
                 new_alerts.append(lead)
 
-    store = {k: v for k, v in store.items() if datetime.fromisoformat(v["time"]) >= cutoff}
+    store = {k: v for k, v in store.items() if datetime.fromisoformat(v["time"]) >= cutoff
+             and not any(b.lower() in v["source"].lower() for b in block)}
     save("data/news.json", store)
     render(cfg, store, now.strftime("%Y/%m/%d %H:%M"))
 
