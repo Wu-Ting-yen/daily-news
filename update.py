@@ -185,8 +185,15 @@ def render(cfg, store, updated):
         return f'<time datetime="{iso}">{datetime.fromisoformat(iso).strftime("%m/%d %H:%M")}</time>'
 
     def card(g):
-        it = g[0]  # 最早報導、最能代表這個話題的那則當標題，其餘依時間新到舊
-        g = [it] + sorted(g[1:], key=lambda x: x["time"], reverse=True)
+        # 標題：跟這個話題最貼近的「最新」一則；其餘依時間新到舊
+        lt = tokens(g[0]["title"])
+        it = g[0]
+        for x in sorted(g[1:], key=lambda x: x["time"], reverse=True):
+            xt = tokens(x["title"])
+            if len(lt & xt) / max(1, len(lt | xt)) >= 0.15:
+                it = x
+                break
+        g = [it] + sorted([x for x in g if x is not it], key=lambda x: x["time"], reverse=True)
         hot = " hot" if any(x.get("alert") for x in g) else ""
         out = (f'<article class="card{hot}"><a class="main" href="{html.escape(it["link"])}" target="_blank" rel="noopener">'
                f'<h3>{html.escape(it["title"])}</h3>'
