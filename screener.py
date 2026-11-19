@@ -185,16 +185,18 @@ def institutional(dates):
 
 
 def taifex_csv(url, form):
-    try:
-        req = urllib.request.Request(url, data=urllib.parse.urlencode(form).encode(), headers=UA)
-        with urllib.request.urlopen(req, timeout=40) as r:
-            raw = r.read()
-        text = raw.decode("big5", "replace") if not raw.startswith(b"\xef\xbb\xbf") else raw.decode("utf-8-sig")
-        rows = [ln.split(",") for ln in text.strip().splitlines()]
-        return rows if rows and len(rows[0]) > 3 else []
-    except Exception as e:
-        print("taifex error", url, e, file=sys.stderr)
-        return []
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, data=urllib.parse.urlencode(form).encode(), headers=UA)
+            with urllib.request.urlopen(req, timeout=60) as r:
+                raw = r.read()
+            text = raw.decode("big5", "replace") if not raw.startswith(b"\xef\xbb\xbf") else raw.decode("utf-8-sig")
+            rows = [ln.split(",") for ln in text.strip().splitlines()]
+            return rows if rows and len(rows[0]) > 3 else []
+        except Exception as e:
+            print("taifex error", attempt, url, e, file=sys.stderr)
+            time.sleep(5)
+    return []
 
 
 def vprofile(bars, nbin=24):
