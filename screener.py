@@ -1103,6 +1103,11 @@ def main():
         WAR[code] = {"today": v, "avg": round(sum(shares) / len(shares)) if shares else None}
     print("warrant underlyings", len(war))
 
+    # 補算：還沒有收盤紀錄的前幾個交易日，用當天以前的股價重新分類（基本面、估值資料相同）
+    have = set(history_days())
+    back = [d for d, _ in idx[-11:] if d < last_date and d not in have]
+    backfill = {d: {"_bf": 1} for d in back}
+
     stocks = []
     for u in uni:
         h, hlv = yahoo(u["code"] + ".TW", full=True)
@@ -1117,9 +1122,23 @@ def main():
         except Exception as ex:
             print("analyse error", u["code"], ex, file=sys.stderr)
             continue
+        for d in back:
+            hh = [x for x in h if x[0] <= d]
+            if len(hh) < 20 or hh[-1][0] != d:
+                continue
+            try:
+                u2 = dict(u, hist=hh, vp=None)
+                b_ = analyse(u2, rev, cache, {}, 0)
+                backfill[d][u["code"]] = {"c": b_["cat"], "p": b_["price"], "f": b_["fund"]}
+            except Exception as ex:
+                print("backfill error", d, u["code"], ex, file=sys.stderr)
         s.pop("hist", None)
         s.pop("hlv", None)
         stocks.append(s)
+    for d, snap in backfill.items():
+        if len(snap) > 50:
+            save(f"data/history/{d}.json", snap)
+    print("backfilled", {d: len(v) - 1 for d, v in backfill.items()})
 
     opt = {}
     for d in [x for x, _ in idx[-3:]][::-1]:   # 當天資料還沒出來就用前一個交易日
