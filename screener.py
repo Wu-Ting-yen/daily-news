@@ -142,13 +142,15 @@ def refresh_cache(codes, cache, fm, today):
     order = sorted(codes, key=lambda c: cache.get(c, {}).get("at", ""))
     for code in order:
         c = cache.get(code, {})
-        if c.get("at", "") >= (today - dt.timedelta(days=CACHE_DAYS)).isoformat():
+        if c.get("at", "") >= (today - dt.timedelta(days=CACHE_DAYS)).isoformat() and "mr" in c:
             continue
         fin = fm("TaiwanStockFinancialStatements", code, start_fin)
         per = fm("TaiwanStockPER", code, start_per) if fin is not None else None
-        if fin is None or per is None:
+        mr = fm("TaiwanStockMonthRevenue", code, start_fin) if per is not None else None
+        if fin is None or per is None or mr is None:
             break
-        c = {"at": today.isoformat(), "q": quarterly(fin)}
+        c = {"at": today.isoformat(), "q": quarterly(fin),
+             "mr": {f'{r["revenue_year"]}-{r["revenue_month"]:02d}': r["revenue"] for r in mr}}
         if per:
             c["pe_p"] = pctiles([r["PER"] for r in per])
             c["pb_p"] = pctiles([r["PBR"] for r in per])
@@ -268,6 +270,37 @@ def analyse(s, rev, cache, inst, mkt_dd):
                 score -= 1
                 reasons.append(("bad", f"毛利率比上一季掉了 {gq - g0:.1f} 個百分點"))
 
+    # 詳細資料：近 6 個月營收年增、近 5 季 EPS / 毛利率
+    mrv = c.get("mr") or {}
+    if r and r.get("資料年月"):   # 用證交所最新一個月補上
+        ym = r["資料年月"]
+        cur, ly = num(r.get("營業收入-當月營收")), num(r.get("營業收入-去年當月營收"))
+        y0 = int(ym[:-2]) + 1911
+        if cur:
+            mrv = dict(mrv)
+            mrv[f"{y0}-{int(ym[-2:]):02d}"] = cur * 1000
+            if ly:
+                mrv[f"{y0 - 1}-{int(ym[-2:]):02d}"] = ly * 1000
+    series = []
+    upto = f"{int(r['資料年月'][:-2]) + 1911}-{int(r['資料年月'][-2:]):02d}" if r and r.get("資料年月") else "9999"
+    for k in [k for k in sorted(mrv) if k <= upto][-6:]:
+        prev = mrv.get(f"{int(k[:4]) - 1}{k[4:]}")
+        if prev:
+            series.append([int(k[5:]), round((mrv[k] / prev - 1) * 100, 1)])
+    s["rev6"] = series
+    if len(series) >= 3:
+        neg = sum(1 for _, v in series[-3:] if v < 0)
+        if neg == 3:
+            reasons.append(("bad", "營收已經連續 3 個月比去年少"))
+        elif neg == 0 and all(v >= 10 for _, v in series[-3:]):
+            reasons.append(("good", "近 3 個月營收都比去年成長 10% 以上"))
+    qt = []
+    for k in list(q.keys())[-5:]:
+        d = q[k]
+        g = d["GrossProfit"] / d["Revenue"] * 100 if d.get("GrossProfit") is not None and d.get("Revenue") else None
+        qt.append([f"{k[2:4]}Q{(int(k[5:7]) - 1) // 3 + 1}", d.get("EPS"), g and round(g, 1)])
+    s["q5"] = qt
+
     # 3) 估值：跟自己過去三年比
     pl = c.get("per_last")
     base = dict(hist).get(pl["date"]) if pl else None
@@ -383,6 +416,20 @@ def card(s, i=None):
     marks = {"good": "○", "bad": "×", "mid": "·"}
     rs = "".join(f'<li class="{k}"><i>{marks[k]}</i>{e(t)}</li>' for k, t in s["reasons"])
     flag = "".join(f'<span class="flag">{e(f)}</span>' for f in s["flags"])
+    if s.get("streak", 0) >= 2:
+        flag += f'<span class="streak">連續 {s["streak"]} 天入選</span>'
+    detail = ""
+    if s.get("rev6"):
+        mx = max(abs(v) for _, v in s["rev6"]) or 1
+        bars = "".join(f'<div class="bar"><i class="{"pos" if v >= 0 else "neg"}" style="height:{max(3, abs(v) / mx * 34):.0f}px"></i>'
+                       f'<b>{v:+.0f}%</b><span>{m}月</span></div>' for m, v in s["rev6"])
+        detail += f'<div class="dt"><h4>近 {len(s["rev6"])} 個月營收年增</h4><div class="bars">{bars}</div></div>'
+    if s.get("q5"):
+        head = "".join(f"<th>{k}</th>" for k, _, _ in s["q5"])
+        eps = "".join(f"<td>{v:.2f}</td>" if v is not None else "<td>—</td>" for _, v, _ in s["q5"])
+        gm = "".join(f"<td>{g:.1f}%</td>" if g is not None else "<td>—</td>" for _, _, g in s["q5"])
+        detail += (f'<div class="dt"><h4>近 5 季</h4><table><tr><th></th>{head}</tr><tr><th>EPS</th>{eps}</tr>'
+                   + (f'<tr><th>毛利率</th>{gm}</tr>' if any(g is not None for _, _, g in s["q5"]) else "") + '</table></div>')
     badge = ""
     if s["cat"] == "oversold":
         n = 1 + (1 if s["dd"] <= -30 else 0) + (1 if (s.get("trust") or 0) > 0.5 or (s.get("foreign") or 0) > 2 else 0)
@@ -395,11 +442,11 @@ def card(s, i=None):
   </a>
   <div class="sk">{spark_svg(s["spark"])}{badge}</div>
   <div class="chips">{chip_html}</div>
-  <details><summary>為什麼這樣判斷</summary><ul class="why">{rs}</ul></details>
+  <details><summary>為什麼這樣判斷</summary><ul class="why">{rs}</ul>{detail}</details>
 </article>'''
 
 
-def render(stocks, mkt, updated, inst_days):
+def render(stocks, mkt, updated, inst_days, sig=()):
     groups = {
         "oversold": sorted([s for s in stocks if s["cat"] == "oversold"], key=lambda s: -s["rank"]),
         "pricey": sorted([s for s in stocks if s["cat"] == "pricey"], key=lambda s: -s["rank"]),
@@ -414,7 +461,7 @@ def render(stocks, mkt, updated, inst_days):
     }
     names = {"oversold": "可能錯殺", "pricey": "跌深・不便宜", "weak": "基本面轉弱", "others": "其他"}
     nav = "".join(f'<button data-tab="{k}">{names[k]}<b>{len(v)}</b></button>' for k, v in groups.items())
-    nav += '<button data-tab="how">怎麼判斷</button>'
+    nav += f'<button data-tab="signals">訊號紀錄<b>{len(sig)}</b></button><button data-tab="how">怎麼判斷</button>'
     body = ""
     for k, v in groups.items():
         cs = [card(s, i + 1 if k == "oversold" else None) for i, s in enumerate(v)]
@@ -422,6 +469,7 @@ def render(stocks, mkt, updated, inst_days):
         if len(cs) > 15:
             cards += f'<details class="more"><summary>再看其餘 {len(cs) - 15} 檔</summary>{"".join(cs[15:])}</details>'
         body += f'<section id="{k}"><p class="lead">{intro[k]}</p>{cards or "<p class=empty>今天沒有符合的股票</p>"}</section>'
+    body += signals_html(sig)
     body += HOW.replace("{{DROP}}", str(int(-DROP_LINE))).replace("{{INST}}", "、".join(d[5:].replace("-", "/") for d in inst_days) or "—")
     n_drop = sum(1 for s in stocks if s["dd"] <= DROP_LINE)
     summary = (f'<div class="mk"><div><span class="lbl">加權指數</span><b>{mkt["last"]:,.0f}</b>'
@@ -433,6 +481,26 @@ def render(stocks, mkt, updated, inst_days):
     with open(os.path.join(ROOT, "stocks.html"), "w", encoding="utf-8") as f:
         f.write(out)
     return groups
+
+
+def signals_html(sig):
+    e = html.escape
+    rows = ""
+    for x in sorted(sig, key=lambda x: x["date"], reverse=True):
+        perf = "".join(f'<div class="chip {tone(x.get(k))}"><span>{lab}</span><b>{fmt(x.get(k))}</b></div>'
+                       for k, lab in (("d5", "5 天後"), ("d20", "20 天後"), ("d60", "60 天後"), ("now", "到今天")))
+        rs = "".join(f"<li class='mid'><i>·</i>{e(t)}</li>" for t in x["reasons"])
+        rows += f'''<article class="card stock sig {'oversold' if x['type'] == '錯殺' else 'weak'}">
+  <div class="head"><div class="nm"><h3>{e(x["name"])} <em>{x["code"]}</em></h3>
+  <div class="ind"><span class="tag">{x["type"]}・強度{x["strength"]}</span>{x["date"][5:].replace("-", "/")} 收盤 {x["price"]:,.2f}</div></div>
+  <div class="px"><div class="dd">{x["dd"]:+.1f}<small>%</small></div><div class="p">當時距高點</div></div></div>
+  <div class="chips">{perf}</div>
+  <details><summary>當時的理由</summary><ul class="why">{rs}</ul></details>
+</article>'''
+    lead = ("只有訊號特別明確時才會記錄在這裡，並傳 Telegram 通知：<br>"
+            "<b>錯殺</b>＝連續 3 天在錯殺名單、基本面分數 ≥ 5、估值在近三年最便宜的 10%、外資或投信近 5 日買超。<br>"
+            "<b>轉弱</b>＝前一天還不是轉弱，新公布的營收或財報讓它亮紅燈。<br>之後 5、20、60 個交易日的漲跌會自動補上，用來檢驗這套方法準不準。")
+    return f'<section id="signals"><p class="lead">{lead}</p>{rows or "<p class=empty>還沒有明確訊號。每天收盤後檢查，出現時會通知你。</p>"}</section>'
 
 
 HOW = '''<section id="how"><div class="card how">
@@ -466,6 +534,75 @@ HOW = '''<section id="how"><div class="card how">
 </div></section>'''
 
 
+# ───────────────────────── 長期追蹤 ─────────────────────────
+
+def history_days():
+    d = os.path.join(ROOT, "data", "history")
+    os.makedirs(d, exist_ok=True)
+    return sorted(f[:-5] for f in os.listdir(d) if f.endswith(".json"))
+
+
+def track(stocks, date, after_close):
+    """存每日快照、算連續入選天數、產生明確訊號、回填訊號之後的漲跌"""
+    days = [d for d in history_days() if d < date]
+    past = {d: load(f"data/history/{d}.json", {}) for d in days[-30:]}
+    prev = past[days[-1]] if days else {}
+    for s in stocks:
+        n = 1 if s["cat"] == "oversold" else 0
+        if n:
+            for d in reversed(days[-30:]):
+                if past[d].get(s["code"], {}).get("c") == "oversold":
+                    n += 1
+                else:
+                    break
+        s["streak"] = n
+    if after_close:
+        save(f"data/history/{date}.json", {s["code"]: {"c": s["cat"], "p": s["price"], "f": s["fund"]} for s in stocks})
+
+    sig = load("data/signals.json", [])
+    by_code = {x["code"]: x for x in stocks}
+    # 回填之後的表現（用每天的快照價格）
+    alld = history_days()
+    for x in sig:
+        if x["date"] not in alld:
+            continue
+        i = alld.index(x["date"])
+        for n in (5, 20, 60):
+            k = f"d{n}"
+            if x.get(k) is None and i + n < len(alld):
+                px = load(f"data/history/{alld[i + n]}.json", {}).get(x["code"], {}).get("p")
+                if px:
+                    x[k] = round((px / x["price"] - 1) * 100, 1)
+        cur = by_code.get(x["code"])
+        if cur:
+            x["now"] = round((cur["price"] / x["price"] - 1) * 100, 1)
+
+    new = []
+    if after_close and prev:
+        recent = {(x["code"], x["type"]) for x in sig if x["date"] >= (dt.date.fromisoformat(date) - dt.timedelta(days=30)).isoformat()}
+        for s in stocks:
+            rank = s.get("pe_rank") if s.get("pe_rank") is not None else s.get("pb_rank")
+            buying = (s.get("foreign") or 0) > 0 or (s.get("trust") or 0) > 0
+            kind = None
+            if s["cat"] == "oversold" and s["streak"] >= 3 and s["fund"] >= 5 and rank is not None and rank <= 0.1 and buying:
+                kind = "錯殺"
+            was = prev.get(s["code"], {}).get("c")
+            if s["cat"] == "weak" and was and was != "weak" and s["flags"]:
+                kind = "轉弱"
+            if not kind or (s["code"], kind) in recent:
+                continue
+            x = {"id": f'{date}-{s["code"]}-{kind}', "date": date, "code": s["code"], "name": s["name"], "type": kind,
+                 "industry": s.get("industry"), "price": s["price"], "dd": s["dd"], "fund": s["fund"], "streak": s["streak"],
+                 "rev_yoy": s.get("rev_yoy"), "eps_yoy": s.get("eps_yoy"), "gm": s.get("gm"), "gm_yoy": s.get("gm_yoy"),
+                 "pe": s.get("pe"), "pb": s.get("pb"), "val_rank": rank, "foreign": s.get("foreign"), "trust": s.get("trust"),
+                 "flags": s["flags"], "reasons": [t for _, t in s["reasons"]], "rev6": s.get("rev6"), "q5": s.get("q5")}
+            x["strength"] = "強" if kind == "轉弱" or (s["fund"] >= 7 and rank <= 0.05) else "中"
+            sig.append(x)
+            new.append(x)
+    save("data/signals.json", sig)
+    return sig, new
+
+
 # ───────────────────────── Telegram ─────────────────────────
 
 def send_telegram(text):
@@ -487,33 +624,20 @@ def send_telegram(text):
         return False
 
 
-def push(groups, mkt, date, url):
-    sent = load("data/stocks_pushed.json", {})
-    if sent.get("date") == date:
-        return
+def push(new, mkt, date, url):
     e = html.escape
-    lines = [f"<b>📉 錯殺股雷達 {date[5:].replace('-', '/')}</b>",
-             f"加權 {mkt['last']:,.0f}（{mkt['chg1']:+.2f}%），距高點 {mkt['dd']:+.1f}%", ""]
-    top = groups["oversold"][:6]
-    if top:
-        lines.append("<b>可能錯殺</b>")
-        for s in top:
-            why = []
-            if s.get("rev_yoy") is not None:
-                why.append(f"營收{s['rev_yoy']:+.0f}%")
-            if s.get("eps_yoy") is not None:
-                why.append(f"EPS{s['eps_yoy']:+.0f}%")
-            if s.get("pe_rank") is not None and s["cheap"]:
-                why.append("本益比偏低")
-            lines.append(f"・{e(s['name'])} {s['code']}　跌{s['dd']:.0f}%｜" + "、".join(why))
-    weak = groups["weak"][:4]
-    if weak:
-        lines += ["", "<b>基本面轉弱</b>"]
-        for s in weak:
-            lines.append(f"・{e(s['name'])} {s['code']}　跌{s['dd']:.0f}%｜" + ("、".join(s["flags"]) or "營收或獲利衰退"))
-    lines += ["", f'<a href="{url}stocks.html">看完整清單與理由</a>', "（篩選結果，不是投資建議）"]
-    if send_telegram("\n".join(lines)):
-        save("data/stocks_pushed.json", {"date": date})
+    for x in new:
+        icon = "🟢 可能錯殺" if x["type"] == "錯殺" else "🔻 基本面轉弱"
+        lines = [f"<b>{icon}｜{e(x['name'])} {x['code']}</b>（訊號強度：{x['strength']}）",
+                 f"{date[5:].replace('-', '/')} 收盤 {x['price']:,.2f}，距三個月高點 {x['dd']:+.1f}%"
+                 + (f"，連續 {x['streak']} 天入選" if x["type"] == "錯殺" else ""), ""]
+        lines += [f"・{e(t)}" for t in x["reasons"]]
+        if x.get("rev6"):
+            lines.append("・近月營收年增：" + "、".join(f"{m}月{v:+.0f}%" for m, v in x["rev6"]))
+        lines += ["", f"大盤：加權 {mkt['last']:,.0f}，距高點 {mkt['dd']:+.1f}%",
+                  f'<a href="{url}stocks.html#signals">看訊號紀錄</a>　（篩選結果，不是投資建議）']
+        send_telegram("\n".join(lines))
+        time.sleep(1)
 
 
 # ───────────────────────── main ─────────────────────────
@@ -557,13 +681,17 @@ def main():
         s.pop("hist", None)
         stocks.append(s)
 
+    after_close = last_date == today.isoformat() and now.hour * 100 + now.minute >= 1430
+    sig, new = track(stocks, last_date, after_close)
+    print("signals new", [(x["name"], x["type"]) for x in new])
+
     updated = now.strftime("%m/%d %H:%M")
-    groups = render(stocks, mkt, updated, inst_days)
+    groups = render(stocks, mkt, updated, inst_days, sig)
     save("data/stocks.json", {"updated": now.isoformat(), "market": mkt, "stocks": stocks})
     print({k: len(v) for k, v in groups.items()})
 
-    if os.environ.get("PUSH") == "1" and last_date == today.isoformat():
-        push(groups, mkt, last_date, os.environ.get("PAGE_URL", "https://wu-ting-yen.github.io/daily-news/"))
+    if new and os.environ.get("PUSH") == "1":
+        push(new, mkt, last_date, os.environ.get("PAGE_URL", "https://wu-ting-yen.github.io/daily-news/"))
 
 
 if __name__ == "__main__":

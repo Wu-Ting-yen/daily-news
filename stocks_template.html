@@ -134,6 +134,22 @@ details.more{border:1px dashed var(--line);border-radius:16px;padding:0 0 4px;ma
 details.more>summary{font-size:14px;color:var(--fogdeep)}
 details.more[open]>summary{margin-bottom:8px}
 details.more .card{margin:0 8px 12px}
+.streak,.tag{font-size:11.5px;color:#fff;background:var(--fogdeep);border-radius:6px;padding:0 6px;line-height:1.7}
+.sig.oversold .tag{background:var(--copper)}.sig.weak .tag{background:#a5574a}
+.sig .ind{gap:8px}
+.dt{padding:4px 18px 14px}
+.dt h4{margin:6px 0 8px;font:700 13px "Noto Serif TC",serif;color:var(--fogdeep);letter-spacing:.06em}
+.bars{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;align-items:end}
+.bar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-height:66px}
+.bar i{display:block;width:60%;max-width:22px;border-radius:4px 4px 2px 2px}
+.bar i.pos{background:linear-gradient(180deg,var(--copper2),var(--copper))}
+.bar i.neg{background:linear-gradient(180deg,#9fb2c3,var(--fog))}
+.bar b{font:600 11.5px "Noto Sans TC",sans-serif;margin-top:3px;color:var(--text)}
+.bar span{font-size:11px;color:var(--sub)}
+.dt table{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+.dt th,.dt td{padding:5px 2px;text-align:center;border-bottom:1px dashed var(--line);font-weight:500}
+.dt th{color:var(--sub);font-weight:400}
+.dt tr th:first-child{text-align:left;width:52px}
 .foot{text-align:center;font-size:12px;color:var(--sub);margin-top:20px}
 .empty{color:var(--sub);text-align:center;padding:48px 0}
 #totop{position:fixed;right:18px;bottom:calc(22px + env(safe-area-inset-bottom));width:46px;height:46px;border-radius:50%;
