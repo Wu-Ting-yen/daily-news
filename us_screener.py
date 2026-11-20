@@ -253,8 +253,13 @@ def delta_iv(ch, exp, target):
     legs = [x for x in ch if x["exp"] == exp and x["iv"] > 1 and x["bid"] > 0 and x["delta"]]
     if not legs:
         return None
-    best = min(legs, key=lambda x: abs(x["delta"] - target))
-    return round(best["iv"], 2) if abs(best["delta"] - target) < 0.08 else None
+    legs = sorted((x for x in legs if (x["delta"] < 0) == (target < 0)), key=lambda x: x["delta"])
+    for a, b in zip(legs, legs[1:]):   # 在目標 Delta 兩側的兩個履約價之間內插
+        if a["delta"] <= target <= b["delta"] and b["delta"] - a["delta"] < 0.3:
+            w = (target - a["delta"]) / ((b["delta"] - a["delta"]) or 1)
+            return round(a["iv"] + (b["iv"] - a["iv"]) * w, 2)
+    best = min(legs, key=lambda x: abs(x["delta"] - target), default=None)
+    return round(best["iv"], 2) if best and abs(best["delta"] - target) < 0.08 else None
 
 
 def third_friday(y, m):
