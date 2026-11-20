@@ -19,6 +19,7 @@ import re
 import statistics
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -51,6 +52,11 @@ def get(url, tries=3, timeout=40):
                 if r.headers.get("Content-Encoding") == "gzip":
                     raw = gzip.decompress(raw)
                 return json.loads(raw.decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            print("get fail", url[:90], e, file=sys.stderr)
+            if 400 <= e.code < 500:
+                return None   # 被拒絕就不重試，直接換下一個來源
+            time.sleep(2 + 3 * i)
         except Exception as e:
             print("get fail", url[:90], e, file=sys.stderr)
             time.sleep(2 + 3 * i)
@@ -136,9 +142,76 @@ def yahoo(sym, rng="1y", interval="1d"):
 def cboe(sym):
     s = sym.replace("/", ".")
     j = get(f"https://cdn.cboe.com/api/global/delayed_quotes/options/{s}.json")
-    if not j or "data" not in j:
-        j = get(f"https://cdn.cboe.com/api/global/delayed_quotes/options/{s.replace('.', '')}.json")
     return (j or {}).get("data")
+
+
+# ── 備用來源：Nasdaq 選擇權報價表（有未平倉、成交量、買賣價，沒有隱含波動度 → 自己用 Black-Scholes 反推）──
+
+RATE = 0.04   # 無風險利率（約略值，只影響隱含波動度一點點）
+
+
+def ncdf(x):
+    return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+
+def bs(S, K, T, sig, cp):
+    if T <= 0 or sig <= 0:
+        return max(0.0, S - K) if cp == "C" else max(0.0, K - S), (1.0 if S > K else 0.0) if cp == "C" else (-1.0 if S < K else 0.0)
+    d1 = (math.log(S / K) + (RATE + sig * sig / 2) * T) / (sig * math.sqrt(T))
+    d2 = d1 - sig * math.sqrt(T)
+    if cp == "C":
+        return S * ncdf(d1) - K * math.exp(-RATE * T) * ncdf(d2), ncdf(d1)
+    return K * math.exp(-RATE * T) * ncdf(-d2) - S * ncdf(-d1), ncdf(d1) - 1
+
+
+def implied(price, S, K, T, cp):
+    """用二分法找出讓理論價等於市價的波動度"""
+    intrinsic = max(0.0, S - K * math.exp(-RATE * T)) if cp == "C" else max(0.0, K * math.exp(-RATE * T) - S)
+    if price <= intrinsic + 1e-4 or T <= 0:
+        return None
+    lo, hi = 0.01, 5.0
+    if bs(S, K, T, hi, cp)[0] < price:
+        return None
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if bs(S, K, T, mid, cp)[0] > price:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
+
+
+def nasdaq_chain(sym, spot, today):
+    s = sym.replace("/", ".")
+    j = get(f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(s)}/option-chain?assetclass=stocks&limit=10000"
+            "&fromdate=all&todate=undefined&money=all&type=all")
+    rows = ((((j or {}).get("data") or {}).get("table") or {}).get("rows")) or []
+    if not rows:
+        return None, ""
+    f = lambda v: float(str(v).replace(",", "")) if v not in (None, "", "--") else 0.0
+    out, exp = [], None
+    for r in rows:
+        if r.get("expirygroup"):
+            try:
+                exp = dt.datetime.strptime(r["expirygroup"], "%B %d, %Y").date()
+            except ValueError:
+                exp = None
+            continue
+        if not exp or not r.get("strike"):
+            continue
+        k = f(r["strike"])
+        dte = (exp - today).days
+        T = max(dte, 0.5) / 365
+        for cp, pre in (("C", "c_"), ("P", "p_")):
+            bid, ask, last = f(r.get(pre + "Bid")), f(r.get(pre + "Ask")), f(r.get(pre + "Last"))
+            px = (bid + ask) / 2 if bid > 0 and ask > 0 else 0
+            iv = implied(px, spot, k, T, cp) if px and dte >= 0 else None
+            delta = bs(spot, k, T, iv, cp)[1] if iv else 0
+            out.append({"exp": exp, "dte": dte, "cp": cp, "k": k, "oi": f(r.get(pre + "Openinterest")),
+                        "vol": f(r.get(pre + "Volume")), "iv": (iv or 0) * 100, "delta": delta,
+                        "bid": bid, "ask": ask, "theo": px or last})
+    asof = ((j.get("data") or {}).get("lastTrade") or "").replace("LAST TRADE:", "").strip()
+    return out, asof
 
 
 # ───────────────────────── 計算 ─────────────────────────
@@ -191,14 +264,17 @@ def third_friday(y, m):
 
 def options(sym, spot, today):
     data = cboe(sym)
-    if not data or not data.get("options"):
-        return None
-    ch = [x for x in parse_chain(data, today) if x["dte"] >= 0]
+    if data and data.get("options"):
+        ch = [x for x in parse_chain(data, today) if x["dte"] >= 0]
+        spot = data.get("current_price") or spot
+        o = {"src": "Cboe", "spot": spot, "asof": (data.get("last_trade_time") or "")[:16].replace("T", " ") + "（美東）",
+             "iv30": data.get("iv30"), "iv30_chg": data.get("iv30_change")}
+    else:
+        ch, asof = nasdaq_chain(sym, spot, today)
+        ch = [x for x in ch or [] if x["dte"] >= 0]
+        o = {"src": "Nasdaq", "spot": spot, "asof": asof, "iv30": None, "iv30_chg": None}
     if not ch:
         return None
-    spot = data.get("current_price") or spot
-    o = {"spot": spot, "asof": (data.get("last_trade_time") or "")[:16], "iv30": data.get("iv30"),
-         "iv30_chg": data.get("iv30_change")}
     o["oi_c"] = int(sum(x["oi"] for x in ch if x["cp"] == "C"))
     o["oi_p"] = int(sum(x["oi"] for x in ch if x["cp"] == "P"))
     o["oi"] = o["oi_c"] + o["oi_p"]
@@ -217,6 +293,10 @@ def options(sym, spot, today):
             if v:
                 term.append([d, v])
     o["term"] = term
+    if not o.get("iv30") and len(term) >= 2:
+        a = max((t for t in term if t[0] <= 30), default=term[0], key=lambda t: t[0])
+        b = min((t for t in term if t[0] >= 30), default=term[-1], key=lambda t: t[0])
+        o["iv30"] = round(a[1] if a[0] == b[0] else a[1] + (b[1] - a[1]) * (30 - a[0]) / (b[0] - a[0]), 2)
 
     def near(days):
         c = [e for e in exps if (e - today).days >= 7]
@@ -741,7 +821,7 @@ def detail(s):
 <p class="note2">橫軸是到期天數，縱軸是價平隱含波動度。正常是往右上升（越久越不確定）；<b>左邊翹高（倒掛）</b>代表市場在為最近的下跌或事件付高價。'''\
         + (f'30 天 {o["atm30"]:.1f}%、90 天 {o["atm90"]:.1f}%。' if o.get("atm30") and o.get("atm90") else "") \
         + ('灰色虛線是前一天。' if prev.get("term") else "") + f'''</p>{term_svg(s)}
-<p class="src">選擇權資料時間（美東）：{E((o.get("asof") or "—").replace("T", " "))}・未平倉是前一個交易日結算後的數字</p>
+<p class="src">選擇權資料時間：{E(o.get("asof") or "—")}・來源 {E(o.get("src", ""))}・未平倉是前一個交易日結算後的數字</p>
 </div></details>'''
 
 
@@ -762,7 +842,7 @@ def card(s, i):
         chips += f'<div class="chip"><span>賣權/買權成交</span><b>{o["pc_vol"]}%</b></div>'
     if o.get("move30"):
         chips += f'<div class="chip"><span>{o.get("move30_days", 30)} 天預期波動</span><b>±{o["move30"]:.1f}%</b></div>'
-    no_opt = "" if o else '<p class="note2" style="padding:0 18px">這檔目前拿不到選擇權資料（可能剛上市還沒有選擇權），先只用成交量分佈判斷。</p>'
+    no_opt = "" if o else '<p class="note2" style="padding:0 18px">今天選擇權報價來源（Cboe、Nasdaq）都沒有回應，這檔先只用成交量分佈判斷，下一次更新會再抓。</p>'
     return f'''<article class="card stock {cls}" id="{s["sym"].replace("/", "")}" data-code="{E(s["sym"])}" data-name="{E(s["zh"] + " " + s["name"])}">
 <div class="head"><div class="no">{i}</div><div class="nm"><h3>{E(s["zh"])} <em>{E(s["sym"])}</em></h3>
 <div class="ind"><span class="state {cls}">{stt}</span><span>市值 {big(s["cap"])} 美元・{E(s["en"])}</span></div></div>
@@ -919,6 +999,9 @@ def main():
     after_close = bool(last_date) and (et.date().isoformat() > last_date or et.hour * 100 + et.minute >= 1615) and not FIXTURE
     sig, new = track(stocks, last_date, after_close)
     for s in stocks:
+        o, pv = s.get("opt") or {}, s.get("prev") or {}
+        if o and o.get("iv30_chg") is None and o.get("iv30") is not None and pv.get("iv30") is not None:
+            o["iv30_chg"] = round(o["iv30"] - pv["iv30"], 2)
         s["read"] = read(s, s.get("prev"), s.get("hist"))
     print("after_close", after_close, "new signals", [(x["sym"], x["type"]) for x in new])
 
