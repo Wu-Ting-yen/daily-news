@@ -883,6 +883,45 @@ def story(s, hedge_level=None):
     s["story"] = t
 
 
+def buy_score(s):
+    """入手分數 0–100：把五個面向加起來，越高越值得優先研究"""
+    parts = []
+    f = s.get("fund", 0)
+    pts = round(max(0, min(f, 7)) / 7 * 30)
+    parts.append(("基本面", pts, 30, f"營收、獲利、毛利率等 {f:+d} 分（滿分 7）"))
+    r = s.get("pe_rank") if s.get("pe_rank") is not None else s.get("pb_rank")
+    if r is None:
+        parts.append(("便宜程度", 8, 25, "估值資料不夠，給中間分"))
+    else:
+        nm = "本益比" if s.get("pe_rank") is not None else "股價淨值比"
+        parts.append(("便宜程度", round((1 - r) * 25), 25, f"{nm}比過去三年 {round((1 - r) * 100)}% 的時候便宜"))
+    rel = (s.get("peer") or {}).get("rel")
+    parts.append(("同業比較", {"優於同業": 15, "跟同業差不多": 8, "落後同業": 0}.get(rel, 7), 15, rel or "找不到夠接近的同業"))
+    dm, o = s.get("demand") or {}, s.get("outlook") or {}
+    d, why = 7, []
+    cl, inv, qr = dm.get("cl_yoy"), dm.get("inv_yoy"), dm.get("qrev_yoy")
+    if cl is not None and cl >= 30: d += 4; why.append("客戶預付款大增")
+    if cl is not None and cl <= -30: d -= 4; why.append("客戶預付款大減")
+    if inv is not None and qr is not None:
+        if inv - qr >= 25 and inv >= 20: d -= 4; why.append("存貨比營收長得快")
+        elif inv - qr <= -25 and qr >= 10: d += 3; why.append("貨賣得比進得快")
+    v = o.get("view", "")
+    if "增溫" in v: d += 4; why.append("新聞面需求增溫")
+    elif "轉弱" in v: d -= 7; why.append("新聞面需求轉弱")
+    elif v: why.append(f"新聞面{v}")
+    parts.append(("未來需求", max(0, min(15, d)), 15, "、".join(why) or "沒有明顯訊號，給中間分"))
+    fo, tr = s.get("foreign"), s.get("trust")
+    if fo is None and tr is None:
+        parts.append(("法人動向", 5, 15, "沒有法人資料"))
+    else:
+        fo, tr = fo or 0, tr or 0
+        pts = 15 if fo > 0 and tr > 0 else 10 if fo + tr > 0 else 5 if fo > 0 or tr > 0 else 0
+        parts.append(("法人動向", pts, 15, f"近 5 日外資{'買' if fo >= 0 else '賣'} {abs(fo):.1f} 億、投信{'買' if tr >= 0 else '賣'} {abs(tr):.1f} 億"))
+    sc = sum(x[1] for x in parts)
+    s["score"], s["score_parts"] = sc, parts
+    s["grade"] = "A 優先研究" if sc >= 85 else "B 值得觀察" if sc >= 70 else "C 普通" if sc >= 55 else "D 先別碰"
+
+
 # ───────────────────────── 網頁 ─────────────────────────
 
 def spark_svg(vals, w=120, h=36):
@@ -987,10 +1026,13 @@ def card(s, i=None):
         src = "".join(f'<li><a href="{e(x.get("url", ""))}" target="_blank" rel="noopener">{e(x.get("title", ""))}</a></li>' for x in (o.get("sources") or [])[:4])
         detail += (f'<div class="dt"><h4>未來需求・新聞重點（{e(o.get("date", ""))}）</h4><p class="olk"><b>{e(o.get("view", ""))}</b>　{e(o.get("summary", ""))}</p>'
                    + (f'<ul class="src">{src}</ul>' if src else "") + '</div>')
-    badge = ""
-    if s["cat"] == "oversold":
-        n = 1 + (1 if s["dd"] <= -30 else 0) + (1 if (s.get("trust") or 0) > 0.5 or (s.get("foreign") or 0) > 2 else 0)
-        badge = f'<span class="gems" title="錯殺指數">{"◆" * n}{"◇" * (3 - n)}</span>'
+    badge, sbox = "", ""
+    if s.get("score") is not None:
+        g = s["grade"][0]
+        badge = f'<span class="score g{g}" title="入手分數"><b>{s["score"]}</b><small>分・{e(s["grade"])}</small></span>'
+        rows = "".join(f'<li><span>{e(n)}</span><i><u style="width:{p / m * 100:.0f}%"></u></i><b>{p}<small>/{m}</small></b><em>{e(w)}</em></li>'
+                       for n, p, m, w in s["score_parts"])
+        sbox = f'<div class="dt"><h4>入手分數 {s["score"]} / 100・{e(s["grade"])}</h4><ul class="sparts">{rows}</ul></div>'
     rank = f'<span class="no">{i:02d}</span>' if i else ""
     return f'''<article class="card stock {s["cat"]}" data-code="{s["code"]}" data-name="{e(s["name"])}">
   <a class="head" href="https://tw.stock.yahoo.com/quote/{s["code"]}.{s.get("mkt", "TW")}" target="_blank" rel="noopener">
@@ -1000,19 +1042,19 @@ def card(s, i=None):
   <div class="sk">{spark_svg(s["spark"])}{badge}</div>
   <div class="chips">{chip_html}</div>
   {f'<p class="story">{e(s["story"])}</p>' if s.get("story") else ""}
-  <details><summary>細節：每一項的判斷、同業、需求</summary><ul class="why">{rs}</ul>{detail}</details>
+  <details><summary>細節：每一項的判斷、同業、需求</summary>{sbox}<ul class="why">{rs}</ul>{detail}</details>
 </article>'''
 
 
 def render(stocks, mkt, updated, inst_days, sig=(), opt=None):
     groups = {
-        "oversold": sorted([s for s in stocks if s["cat"] == "oversold"], key=lambda s: -s["rank"]),
-        "pricey": sorted([s for s in stocks if s["cat"] == "pricey"], key=lambda s: -s["rank"]),
+        "oversold": sorted([s for s in stocks if s["cat"] == "oversold"], key=lambda s: (-s.get("score", 0), -s["rank"])),
+        "pricey": sorted([s for s in stocks if s["cat"] == "pricey"], key=lambda s: (-s.get("score", 0), -s["rank"])),
         "weak": sorted([s for s in stocks if s["cat"] == "weak"], key=lambda s: s["fund"] * 10 + s["dd"]),
         "others": sorted([s for s in stocks if s["cat"] in ("strong", "mixed")], key=lambda s: (s["cat"] != "strong", -s["fund"], s["dd"])),
     }
     intro = {
-        "oversold": "跌超過 15%，但營收、獲利、毛利率大多還在成長，而且現在的本益比比過去三年多數時候都低。股價跌可能是被大盤拖累，不是公司本身變差。◆ 越多代表跌得越深、法人也在買進。",
+        "oversold": "跌超過 15%，但營收、獲利、毛利率大多還在成長，而且現在的本益比比過去三年多數時候都低。股價跌可能是被大盤拖累，不是公司本身變差。依「入手分數」由高到低排（滿分 100：基本面 30、便宜程度 25、同業比較 15、未來需求 15、法人動向 15），點「細節」看每一項拿幾分、為什麼。",
         "pricey": "基本面沒變差，也跌超過 15%，但本益比還在過去三年的中間或偏高位置。比較像之前漲太多在修正，不一定算便宜。",
         "weak": "營收或獲利已經在衰退、毛利率變差，或最新一季虧損。這些跌比較「有理由」，抄底要更小心。",
         "others": "基本面好壞參半，或基本面不錯但跌得還不多（抗跌）。",
@@ -1226,8 +1268,18 @@ HOW = '''<section id="how"><div class="card how">
 <li><b>大盤要不要避險</b>：看五個警訊——台指期是否跌破近 60 日「成交量分佈」的密集區、Put/Call 成交比是否比平常高、選擇權總未平倉是否快速增加且偏向賣權、外資選擇權是否偏空、加權指數是否在 20 日均線下。2 個亮起是「留意」，3 個以上「建議避險」。</li>
 <li><b>成交量分佈</b>：把一段時間每天的成交量，平均分到當天最低到最高價之間，累加起來看哪個價位成交最多。沒有免費的內外盤資料，所以只看總量。股價跌破密集區，代表很多人買在上面、正在虧損，賣壓容易變大。</li>
 <li><b>權證（散戶情緒）</b>：每檔股票當天認購、認售權證的成交金額（上市＋上櫃）。認售佔比突然比平常高很多，代表散戶很悲觀；基本面好卻被這樣看壞，常是錯殺的特徵。只當參考，不計分。</li>
-<li><b>法人動向</b>：近 5 個交易日（{{INST}}）外資和投信買超或賣超多少錢。只當參考，不計分。</li>
+<li><b>法人動向</b>：近 5 個交易日（{{INST}}）外資和投信買超或賣超多少錢。不影響分類，但會算進入手分數。</li>
 </ol>
+<h2>入手分數（0–100）</h2>
+<p>同一類裡面誰比較值得先研究？每檔都會算一個入手分數，五個面向加起來：</p>
+<ul>
+<li><b>基本面 30 分</b>：上面的基本面分數，7 分以上拿滿。</li>
+<li><b>便宜程度 25 分</b>：本益比（或股價淨值比）在過去三年越便宜，分數越高。</li>
+<li><b>同業比較 15 分</b>：優於同業 15、跟同業差不多 8、落後同業 0。</li>
+<li><b>未來需求 15 分</b>：從 7 分開始，客戶預付款大增、貨賣得比進得快、新聞面需求增溫會加分；存貨堆積、預付款大減、新聞面需求轉弱會扣分。</li>
+<li><b>法人動向 15 分</b>：外資和投信都買 15、合計買超 10、只有一方買 5、都在賣 0。</li>
+</ul>
+<p>85 分以上是 <b>A 優先研究</b>、70–84 <b>B 值得觀察</b>、55–69 <b>C 普通</b>、55 以下 <b>D 先別碰</b>。「可能錯殺」和「跌深・不便宜」都照分數由高到低排。分數是幫你排研究順序，不是買進建議；大盤避險燈號亮時，分數高的也可能跟著大盤跌。</p>
 <h2>怎麼分類</h2>
 <p>營收、EPS、毛利率每一項做得好加分、變差扣分，加總成「基本面分數」。</p>
 <ul>
@@ -1315,7 +1367,8 @@ def track(stocks, date, after_close):
                  "pe": s.get("pe"), "pb": s.get("pb"), "val_rank": rank, "foreign": s.get("foreign"), "trust": s.get("trust"),
                  "flags": s["flags"], "reasons": [t for _, t in s["reasons"]], "rev6": s.get("rev6"), "q5": s.get("q5"),
                  "story": s.get("story"), "peer": (s.get("peer") or {}).get("text"), "peer_rel": (s.get("peer") or {}).get("rel"),
-                 "demand": s.get("demand"), "outlook": s.get("outlook")}
+                 "demand": s.get("demand"), "outlook": s.get("outlook"), "score": s.get("score"), "grade": s.get("grade"),
+                 "score_parts": s.get("score_parts")}
             x["strength"] = "強" if kind == "轉弱" or (s["fund"] >= 6 and rank <= 0.05) else "中"
             if OPT.get("hedge"):
                 pcv = (OPT.get("pc") or [[0, None]])[-1][1]
@@ -1479,7 +1532,7 @@ def main():
     peer_compare(stocks)
     apply_outlook(stocks, load("data/outlook.json", {}))
     for s in stocks:
-        story(s, (opt.get("hedge") or {}).get("level"))
+        story(s, (opt.get("hedge") or {}).get("level")); buy_score(s)
     sig, new = track(stocks, last_date, after_close)
     print("signals new", [(x["name"], x["type"]) for x in new])
 
