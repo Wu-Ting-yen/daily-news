@@ -431,7 +431,7 @@ def lock_floor(s, prev, cands):
         return cands
     lo, hi, stars = pf[0], pf[1], pf[2] or 1
     base = next((c for c in cands if abs(c["mid"] - (lo + hi) / 2) / px < 0.02), None)   # 今天的資料還看得到同一個地板嗎
-    locked = dict(base) if base else {"lo": lo, "hi": hi, "mid": round((lo + hi) / 2, 2), "w": 0, "src": ["沿用之前找到的地板"],
+    locked = dict(base) if base else {"lo": lo, "hi": hi, "mid": round((lo + hi) / 2, 2), "w": 0, "src": list((prev or {}).get("fsrc") or ["之前找到的成交密集區"]),
                                        "score": 0, "stars": stars}
     locked["lo"], locked["hi"], locked["since"] = lo, hi, (prev or {}).get("fsince")
     if px < lo * 0.98:
@@ -444,7 +444,7 @@ def lock_floor(s, prev, cands):
     up = [c for c in cands if c["lo"] > hi * 1.02 and c["stars"] >= 2 and px > hi * 1.12]
     if up:   # 股價漲上去、上面形成新的地板 → 地板上移
         return [up[0]] + [c for c in cands if c is not up[0]]
-    locked["dist"] = round((px / hi - 1) * 100, 1)
+    locked["dist"] = round((px / (lo if px < lo else hi) - 1) * 100, 1)
     rest = [c for c in cands if c["hi"] < lo * 0.99]
     return [locked] + rest
 
@@ -573,7 +573,7 @@ def status(s):
     if not f:
         return "—", "mid"
     if s["price"] < f["lo"]:
-        return "跌破中（觀察）" if s.get("fb") else "跌破地板", "bad"
+        return ("跌破中（觀察）", "bad") if s.get("fb") else ("略低於地板", "mid")
     if f["dist"] <= 3:
         return "測試地板", "mid"
     return "地板上方", "good"
@@ -593,7 +593,7 @@ def snap(s):
     return {"p": s["price"], "lo": s.get("low"), "oi": o.get("oi"), "oi_c": o.get("oi_c"), "oi_p": o.get("oi_p"),
             "iv30": o.get("iv30"), "atm30": o.get("atm30"), "atm90": o.get("atm90"), "skew": o.get("skew"),
             "pc_vol": o.get("pc_vol"), "floor": [f.get("lo"), f.get("hi"), f.get("stars")] if f else None,
-            "term": o.get("term"), "fb": s.get("fb", 0), "fsince": s.get("fsince")}
+            "term": o.get("term"), "fb": s.get("fb", 0), "fsince": s.get("fsince"), "fsrc": f.get("src") if f else None}
 
 
 def track(stocks, date, after_close):
