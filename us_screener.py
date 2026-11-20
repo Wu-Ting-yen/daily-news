@@ -205,7 +205,9 @@ def nasdaq_chain(sym, spot, today):
         for cp, pre in (("C", "c_"), ("P", "p_")):
             bid, ask, last = f(r.get(pre + "Bid")), f(r.get(pre + "Ask")), f(r.get(pre + "Last"))
             # 盤後買賣價常常是空的，就改用最後成交價（收盤前最後一筆）
-            px = (bid + ask) / 2 if bid > 0 and ask > 0 else last
+            # 買賣價差太大（盤前、盤後常見）時中間價不可靠，改用最後成交價
+            mid = (bid + ask) / 2 if bid > 0 and ask > 0 else 0
+            px = mid if mid and (ask - bid) / mid <= 0.25 else last
             iv = implied(px, spot, k, T, cp) if px and dte >= 0 else None
             delta = bs(spot, k, T, iv, cp)[1] if iv else 0
             out.append({"exp": exp, "dte": dte, "cp": cp, "k": k, "oi": f(r.get(pre + "Openinterest")),
@@ -250,7 +252,8 @@ def atm_iv(ch, spot, exp):
     return round(sum(v) / len(v), 2) if v else None
 
 
-def delta_iv(ch, exp, target):
+def delta_iv(ch, exp, target, how=None):
+    """某到期日、指定 Delta 的隱含波動度；how 會記下用了哪兩個履約價（給網頁說明用）"""
     legs = [x for x in ch if x["exp"] == exp and x["iv"] > 1 and (x["bid"] > 0 or x["theo"] > 0) and x["delta"]]
     if not legs:
         return None
@@ -258,9 +261,15 @@ def delta_iv(ch, exp, target):
     for a, b in zip(legs, legs[1:]):   # 在目標 Delta 兩側的兩個履約價之間內插
         if a["delta"] <= target <= b["delta"] and b["delta"] - a["delta"] < 0.3:
             w = (target - a["delta"]) / ((b["delta"] - a["delta"]) or 1)
+            if how is not None:
+                how += [[a["k"], round(a["delta"], 2), round(a["iv"], 1)], [b["k"], round(b["delta"], 2), round(b["iv"], 1)]]
             return round(a["iv"] + (b["iv"] - a["iv"]) * w, 2)
     best = min(legs, key=lambda x: abs(x["delta"] - target), default=None)
-    return round(best["iv"], 2) if best and abs(best["delta"] - target) < 0.08 else None
+    if best and abs(best["delta"] - target) < 0.08:
+        if how is not None:
+            how.append([best["k"], round(best["delta"], 2), round(best["iv"], 1)])
+        return round(best["iv"], 2)
+    return None
 
 
 def third_friday(y, m):
@@ -303,6 +312,7 @@ def options(sym, spot, today):
         a = max((t for t in term if t[0] <= 30), default=term[0], key=lambda t: t[0])
         b = min((t for t in term if t[0] >= 30), default=term[-1], key=lambda t: t[0])
         o["iv30"] = round(a[1] if a[0] == b[0] else a[1] + (b[1] - a[1]) * (30 - a[0]) / (b[0] - a[0]), 2)
+        o["iv30_how"] = [a, b]
 
     def near(days):
         c = [e for e in exps if (e - today).days >= 7]
@@ -311,13 +321,12 @@ def options(sym, spot, today):
     if e30:
         o["e30"] = e30.isoformat()
         o["atm30"] = atm_iv(ch, spot, e30)
-        p25, c25 = delta_iv(ch, e30, -0.25), delta_iv(ch, e30, 0.25)
+        hp, hc = [], []
+        p25, c25 = delta_iv(ch, e30, -0.25, hp), delta_iv(ch, e30, 0.25, hc)
+        o["p25_how"], o["c25_how"], o["e30_days"] = hp, hc, (e30 - today).days
         p10 = delta_iv(ch, e30, -0.10)
         o["p25"], o["c25"], o["p10"] = p25, c25, p10
         o["skew"] = round(p25 - c25, 2) if p25 and c25 else None
-        if o["skew"] is None:   # 除錯：列出這個到期日靠近 25 Delta 的合約
-            legs = sorted((x for x in ch if x["exp"] == e30 and abs(x["k"] / spot - 1) < 0.15), key=lambda x: (x["cp"], x["k"]))
-            print("skew debug", sym, e30, [(x["cp"], x["k"], x["bid"], x["ask"], round(x["iv"], 1), round(x["delta"], 2)) for x in legs], file=sys.stderr)
         # 預期波動：30 天價平跨式（買權＋賣權）的價格 ÷ 股價
         legs = [x for x in ch if x["exp"] == e30]
         if legs:
@@ -461,9 +470,16 @@ def floors(price, vp, vp_y, o):
     return merged
 
 
-def rv(closes, n=20):
+def rv(closes, n=20, detail=False):
+    """實際波動：近 n 個交易日每天漲跌幅（取對數）的標準差 × √252（一年約 252 個交易日），換成年化百分比"""
     r = [math.log(closes[i] / closes[i - 1]) for i in range(len(closes) - n, len(closes)) if i > 0]
-    return round(statistics.pstdev(r) * math.sqrt(252) * 100, 1) if len(r) > 5 else None
+    if len(r) <= 5:
+        return None
+    v = round(statistics.pstdev(r) * math.sqrt(252) * 100, 1)
+    if detail:
+        return {"rv": v, "sd": round(statistics.pstdev(r) * 100, 2), "max": round(max(r) * 100, 1), "min": round(min(r) * 100, 1),
+                "big": sum(1 for x in r if abs(x) >= 0.03)}
+    return v
 
 
 # ───────────────────────── 判讀 ─────────────────────────
@@ -790,6 +806,68 @@ def term_svg(s):
     return out + "</svg>"
 
 
+def how_box(paras):
+    return '<details class="how2"><summary>怎麼算的</summary>' + "".join(f"<p>{p}</p>" for p in paras) + "</details>"
+
+
+def how_oi(o):
+    return [f"把這檔<b>所有到期日、所有履約價</b>還沒結清的選擇權口數加起來：買權 {o.get('oi_c', 0):,} 口＋賣權 {o.get('oi_p', 0):,} 口。",
+            "未平倉是交易所每天結算後公布的，所以永遠是<b>前一個交易日收盤</b>的數字。一口選擇權通常代表 100 股。",
+            "增加＝有新的人進場押注或避險；減少＝有人平倉或合約到期。看變化主要來自買權還是賣權，就知道新增的是押漲還是買保險。"]
+
+
+def how_iv(o, s):
+    src = o.get("src")
+    out = ["<b>隱含波動度（IV）</b>是從選擇權的價格反推出來的：市場願意付多少錢買選擇權，就代表它覺得股價未來會晃多大。"
+           f"{o['iv30']:.1f}% 的意思是：市場預期未來一年股價的波動幅度（一個標準差）大約是 ±{o['iv30']:.0f}%，換算成一個月大約 ±{o['iv30'] / math.sqrt(12):.1f}%。"]
+    if src == "Cboe":
+        out.append("這個數字直接用 Cboe 公布的 IV30（他們用所有到期日內插出剛好 30 天的值）。")
+    else:
+        out.append("步驟：① 每個到期日，找最接近現價的<b>兩個</b>履約價（價平），每個履約價的買權和賣權都用，共四個合約；價格用買賣價中間值（買賣價差太大時用最後成交價）。"
+                   f"② 用 Black-Scholes 公式（現價 ${s['price']:,.2f}、履約價、剩餘天數、利率 4%）反推出讓公式算出來的價格剛好等於市價的波動度，四個 IV 取平均，就是那個到期日的價平 IV（理論上同一個履約價的買權、賣權 IV 應該一樣，平均起來比較穩）。")
+        hw = o.get("iv30_how")
+        if hw and hw[0][0] != hw[1][0]:
+            (d1, v1), (d2, v2) = hw
+            out.append(f"③ 剛好 30 天沒有合約，所以用前後兩個到期日內插：{d1} 天 {v1:.1f}%、{d2} 天 {v2:.1f}%，"
+                       f"按天數比例 {v1:.1f} + ({v2:.1f} − {v1:.1f}) × (30 − {d1}) ÷ ({d2} − {d1}) = <b>{o['iv30']:.1f}%</b>。")
+        elif hw:
+            out.append(f"③ 剛好有約 {hw[0][0]} 天到期的合約，直接用它的 {hw[0][1]:.1f}%。")
+    return out
+
+
+def how_skew(o, s):
+    d = o.get("e30_days")
+    out = [f"<b>偏斜</b>比較的是「下跌保險」和「上漲押注」哪個比較貴。用最接近 30 天的到期日（{(o.get('e30') or '')[5:].replace('-', '/')}，剩 {d} 天）。",
+           "<b>Delta</b> 可以想成「這個選擇權到期時變成有價值的大概機率」。Delta −0.25 的賣權＝跌到那裡的機率約 25% 的下跌保險；Delta +0.25 的買權＝漲到那裡機率約 25% 的上漲押注。兩邊離現價的「距離」差不多，所以可以公平比較。"]
+
+    def legs(h, name):
+        if not h:
+            return ""
+        if len(h) == 2:
+            (k1, d1, v1), (k2, d2, v2) = h
+            return f"{name}：履約價 ${k1:g}（Delta {d1:+.2f}，IV {v1:.1f}%）和 ${k2:g}（Delta {d2:+.2f}，IV {v2:.1f}%）之間按 Delta 內插"
+        k1, d1, v1 = h[0]
+        return f"{name}：履約價 ${k1:g}（Delta {d1:+.2f}），IV {v1:.1f}%"
+    out.append(legs(o.get("p25_how"), "Delta −0.25 的賣權") + f" → <b>{o['p25']:.1f}%</b>。")
+    out.append(legs(o.get("c25_how"), "Delta +0.25 的買權") + f" → <b>{o['c25']:.1f}%</b>。")
+    out.append(f"偏斜 = {o['p25']:.1f} − {o['c25']:.1f} = <b>{o['skew']:.1f}</b>（單位是波動度百分點）。"
+               "越大代表大家越願意花大錢買下跌保險（怕跌）。絕對值每檔不同，所以<b>每天的變化</b>比絕對值重要：連續上升＝恐慌升溫，連續下降＝恐慌退燒。")
+    return out
+
+
+def how_rv(o, s):
+    h = s.get("rv_how") or {}
+    out = ["<b>實際波動</b>是股價過去真的晃了多大：取近 20 個交易日每天的漲跌幅，算它們的標準差，再乘以 √252（一年大約 252 個交易日）換成跟 IV 一樣的年化單位。"]
+    if h:
+        out.append(f"這檔近 20 天：每天漲跌的標準差 {h['sd']:.2f}%，× √252（≈15.9）= <b>{h['rv']:.1f}%</b>。"
+                   f"期間單日最大漲 {h['max']:+.1f}%、最大跌 {h['min']:+.1f}%，有 {h['big']} 天漲跌超過 3%。")
+    gap = o["iv30"] - s["rv20"]
+    out.append(f"隱含 − 實際 = {o['iv30']:.1f} − {s['rv20']:.1f} = <b>{gap:+.1f}</b>。"
+               + ("正的＝選擇權比最近實際的晃動還貴，市場預期接下來會更動盪（常見於財報、重大事件前）。" if gap > 0 else
+                  "負的＝最近股價晃很大，但選擇權沒有跟著變貴，市場覺得接下來會比較平靜。"))
+    return out
+
+
 def detail(s):
     o = s.get("opt") or {}
     h = s.get("hist") or []
@@ -811,13 +889,18 @@ def detail(s):
         v = (cur / old - 1) * 100 if pct else cur - old
         return f'<small class="{tone(v)}">比前一天 {fmt.format(v)}{"%" if pct else ""}</small>'
 
-    stats = (f'<div><span class="lbl">選擇權總未平倉</span><b>{o.get("oi", 0):,}</b><small>口</small> {chg(o.get("oi"), prev.get("oi"), "{:+.1f}", True)}{spark(oi_hist)}</div>'
-             f'<div><span class="lbl">30 天隱含波動度</span><b>{o.get("iv30") or 0:.1f}%</b>'
-             + (f'<small class="{tone(o.get("iv30_chg"))}">比前一天 {o["iv30_chg"]:+.1f}</small>' if o.get("iv30_chg") is not None else "")
-             + f'{spark(iv_hist)}</div>'
-             f'<div><span class="lbl">偏斜（25Δ 賣權−買權）</span><b>{o["skew"]:.1f}</b> {chg(o.get("skew"), prev.get("skew"))}{spark(sk_hist)}</div>' if o.get("skew") is not None else "")
-    stats += (f'<div><span class="lbl">隱含 − 實際波動</span><b>{o["iv30"] - s["rv20"]:+.1f}</b><small>IV {o["iv30"]:.0f}% ／ 近 20 日實際 {s["rv20"]:.0f}%</small></div>'
-              if o.get("iv30") and s.get("rv20") else "")
+    stats = (f'<div><span class="lbl">選擇權總未平倉</span><b>{o.get("oi", 0):,}</b><small>口</small> {chg(o.get("oi"), prev.get("oi"), "{:+.1f}", True)}{spark(oi_hist)}'
+             f'{how_box(how_oi(o))}</div>')
+    if o.get("iv30") is not None:
+        stats += (f'<div><span class="lbl">30 天隱含波動度</span><b>{o["iv30"]:.1f}%</b>'
+                  + (f'<small class="{tone(o.get("iv30_chg"))}">比前一天 {o["iv30_chg"]:+.1f}</small>' if o.get("iv30_chg") is not None else "")
+                  + f'{spark(iv_hist)}{how_box(how_iv(o, s))}</div>')
+    if o.get("skew") is not None:
+        stats += (f'<div><span class="lbl">偏斜（25Δ 賣權−買權）</span><b>{o["skew"]:.1f}</b> {chg(o.get("skew"), prev.get("skew"))}{spark(sk_hist)}'
+                  f'{how_box(how_skew(o, s))}</div>')
+    if o.get("iv30") and s.get("rv20"):
+        stats += (f'<div><span class="lbl">隱含 − 實際波動</span><b>{o["iv30"] - s["rv20"]:+.1f}</b><small>IV {o["iv30"]:.0f}% ／ 近 20 日實際 {s["rv20"]:.0f}%</small>'
+                  f'{how_box(how_rv(o, s))}</div>')
     return f'''<details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors">{fl or "<p class=note2>近期成交量分佈裡找不到明顯的支撐。</p>"}</div>
 {price_svg(s["daily"], s["floors"], o)}
@@ -989,7 +1072,7 @@ def main():
         cs = [b["c"] for b in daily]
         s = dict(u, zh=ZH.get(u["sym"], u["name"].split()[0]), en=u["name"], daily=daily, price=round(cs[-1], 2),
                  low=daily[-1]["l"], chg=round((cs[-1] / cs[-2] - 1) * 100, 2),
-                 dd=round((cs[-1] / max(cs[-252:]) - 1) * 100, 1), rv20=rv(cs))
+                 dd=round((cs[-1] / max(cs[-252:]) - 1) * 100, 1), rv20=rv(cs), rv_how=rv(cs, detail=True))
         s["vp"] = vprofile(hourly if len(hourly) > 100 else daily[-63:])
         s["vp_y"] = vprofile(daily, 30)
         try:
