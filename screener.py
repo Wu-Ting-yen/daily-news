@@ -23,6 +23,8 @@ TZ = dt.timezone(dt.timedelta(hours=8))
 UA = {"User-Agent": "Mozilla/5.0 (daily-news screener)"}
 UNIVERSE = 150          # 上市、上櫃各取市值前 150 大
 DROP_LINE = -15.0       # 跌幅門檻（距近三個月高點）
+BULL_LINE = -5.0        # 大盤距高點不到 5%＝多頭模式
+REL_LINE = -10.0        # 多頭模式：比大盤多跌 10%（而且自己至少跌 8%）也算跌深
 CACHE_DAYS = 6          # 財報、歷史本益比多久重抓一次
 FINMIND_BUDGET = 290    # 每次最多打幾次 FinMind（免費版每小時 300 次）
 
@@ -730,11 +732,16 @@ def analyse(s, rev, cache, inst, mkt_dd):
 
     # 分類
     s.update(fund=score, flags=flags, cheap=cheap, reasons=reasons)
+    bull = mkt_dd > BULL_LINE
+    rel_deep = bull and dd - mkt_dd <= REL_LINE and dd <= -8
+    deep = dd <= DROP_LINE or rel_deep
+    if rel_deep and dd > DROP_LINE:
+        s["deep_by"] = round(dd - mkt_dd, 1)
     if flags or score <= -2:
         s["cat"] = "weak"
-    elif dd <= DROP_LINE and score >= 3 and cheap:
+    elif deep and score >= 3 and cheap:
         s["cat"] = "oversold"   # 跌深、基本面好、而且跌到比過去便宜
-    elif dd <= DROP_LINE and score >= 2:
+    elif deep and score >= 2:
         s["cat"] = "pricey"     # 基本面沒壞，但估值還不算低（可能是之前漲太多在修正）
     elif score >= 2:
         s["cat"] = "strong"     # 基本面好、跌得不多
@@ -852,10 +859,11 @@ def story(s, hedge_level=None):
     val = f"本益比在過去三年最便宜的 {max(1, round(rank * 100))}% 區間" if rank is not None and rank <= 0.3 else \
           "本益比在過去三年的中間位置" if rank is not None and rank < 0.6 else \
           "本益比在過去三年偏貴的位置" if rank is not None else "估值資料還不夠"
+    rel = f"（大盤在漲，它卻比大盤多跌 {-s['deep_by']:.0f}%，所以多頭模式下也算跌深）" if s.get("deep_by") is not None else ""
     if cat == "oversold":
-        t = f"股價離三個月高點跌了 {dd:.0f}%，但公司本身還在變好（{g or '基本面穩定'}），{val}。所以判斷這次下跌主要是被大盤和資金撤出拖累，不是公司出了問題。"
+        t = f"股價離三個月高點跌了 {dd:.0f}%{rel}，但公司本身還在變好（{g or '基本面穩定'}），{val}。所以判斷這次下跌主要是被大盤和資金撤出拖累，不是公司出了問題。"
     elif cat == "pricey":
-        t = f"股價跌了 {dd:.0f}%，公司本身沒變差（{g or '基本面穩定'}），但{val}。代表之前漲得多、市場期待高，現在比較像在修正過高的期待，還稱不上便宜。"
+        t = f"股價跌了 {dd:.0f}%{rel}，公司本身沒變差（{g or '基本面穩定'}），但{val}。代表之前漲得多、市場期待高，現在比較像在修正過高的期待，還稱不上便宜。"
     elif cat == "weak":
         t = f"判斷基本面轉弱，因為{b or '整體分數偏低'}。這種跌是有理由的，看起來便宜可能是因為未來獲利會更差。"
     elif cat == "strong":
@@ -1064,6 +1072,8 @@ def render(stocks, mkt, updated, inst_days, sig=(), opt=None):
     nav += "".join(f'<button data-tab="{k}">{names[k]}<b>{len(v)}</b></button>' for k, v in groups.items())
     nav += f'<button data-tab="signals">訊號紀錄<b>{len(sig)}</b></button><button data-tab="how">怎麼判斷</button>'
     body = overview(stocks, groups, mkt, opt)
+    if mkt["dd"] > BULL_LINE:
+        intro = dict(intro, oversold="【多頭模式】大盤離高點不到 5%，好股票通常回檔不深。所以除了跌超過 15% 的，<b>比大盤多跌 10% 以上</b>（自己至少跌 8%）、基本面好又便宜的也列進來，這是漲勢中的回檔買點。" + intro["oversold"])
     for k, v in groups.items():
         cs = [card(s, i + 1 if k == "oversold" else None) for i, s in enumerate(v)]
         cards = "".join(cs[:15])
@@ -1076,7 +1086,8 @@ def render(stocks, mkt, updated, inst_days, sig=(), opt=None):
     summary = (f'<div class="mk"><div><span class="lbl">加權指數</span><b>{mkt["last"]:,.0f}</b>'
                f'<small class="{tone(mkt["chg1"])}">{mkt["chg1"]:+.2f}%</small></div>'
                f'<div><span class="lbl">距三個月高點</span><b>{mkt["dd"]:+.1f}%</b><small>高點 {mkt["high"]:,.0f}</small></div>'
-               f'<div><span class="lbl">跌超過 {int(-DROP_LINE)}%</span><b>{n_drop}</b><small>/ {len(stocks)} 檔</small></div></div>')
+               f'<div><span class="lbl">跌超過 {int(-DROP_LINE)}%</span><b>{n_drop}</b><small>/ {len(stocks)} 檔</small></div>'
+               f'<div><span class="lbl">目前模式</span><b>{"多頭" if mkt["dd"] > BULL_LINE else "修正"}</b><small>{"看比大盤多跌 10%" if mkt["dd"] > BULL_LINE else f"看跌超過 {int(-DROP_LINE)}%"}</small></div></div>')
     tpl = open(os.path.join(ROOT, "stocks_template.html"), encoding="utf-8").read()
     out = tpl.replace("{{UPDATED}}", updated).replace("{{NAV}}", nav).replace("{{BODY}}", body).replace("{{SUMMARY}}", summary)
     with open(os.path.join(ROOT, "stocks.html"), "w", encoding="utf-8") as f:
@@ -1287,6 +1298,7 @@ HOW = '''<section id="how"><div class="card how">
 <li><b>跌深・不便宜</b>：跌超過 {{DROP}}%，基本面也還好，但估值不算低。</li>
 <li><b>基本面轉弱</b>：基本面分數 ≤ −2，或亮紅燈（最新一季虧損、單月營收衰退超過 20%、EPS 年減超過 30%）。</li>
 <li><b>其他</b>：好壞參半，或基本面好但還沒跌多少。</li>
+<li><b>多頭模式</b>：大盤離三個月高點不到 5% 時自動切換。好股票在漲勢中通常只回檔 8～10%，等不到 15%，所以改成「比大盤多跌 10% 以上、自己至少跌 8%」也算跌深。大盤跌超過 5% 時自動切回「修正模式」，只看跌超過 {{DROP}}%。</li>
 </ul>
 <p>「可能錯殺」的排序，綜合了基本面分數、有多便宜、法人有沒有買、跌了多深。</p>
 <h2>要注意</h2>
