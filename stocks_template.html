@@ -104,6 +104,20 @@ a{color:inherit;text-decoration:none}
 .spark{width:150px;height:36px;overflow:visible}
 .spark .hi{fill:var(--copper)}
 .gems{color:var(--copper);font-size:14px;letter-spacing:3px}
+.score{display:flex;align-items:baseline;gap:6px;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:#ffffff80}
+@media (prefers-color-scheme:dark){.score{background:#ffffff0a}}
+.score b{font:600 24px/1 "Cormorant Garamond",serif;color:var(--fogdeep)}
+.score small{font-size:11.5px;color:var(--sub)}
+.score.gA{border-color:var(--copper)}.score.gA b{color:var(--copper)}
+.score.gD b{color:#a5574a}
+ul.sparts{list-style:none;margin:0;padding:0}
+ul.sparts li{display:grid;grid-template-columns:64px 1fr 46px;gap:4px 8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line);font-size:13px}
+ul.sparts li span{color:var(--sub)}
+ul.sparts li i{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+ul.sparts li i u{display:block;height:100%;background:var(--fog);border-radius:3px}
+ul.sparts li b{text-align:right;font-weight:600}
+ul.sparts li b small{color:var(--sub);font-weight:400}
+ul.sparts li em{grid-column:1/-1;font-style:normal;font-size:12px;color:var(--sub)}
 .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;padding:0 18px 14px}
 .chip{border:1px solid var(--line);border-radius:12px;padding:6px 10px;background:#ffffff70;min-width:0}
 @media (prefers-color-scheme:dark){.chip{background:#ffffff08}}
