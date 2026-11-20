@@ -4,9 +4,6 @@ on:
   schedule:
     - cron: "20 22 * * 1-5"   # 台北時間 週二到週六 06:20（美股收盤後）
   workflow_dispatch:
-  push:
-    branches: [claude/project-thread-gatn3q]
-    paths: [us_screener.py]
 
 permissions:
   contents: write
