@@ -420,68 +420,37 @@ def nodes(vp):
     return out
 
 
-def lock_floor(s, prev, cands):
-    """地板要「記住」：沿用前一天的地板，不因股價下跌就跟著往下換。
-    - 連續 2 天收在地板下方 2% 以上 → 判定跌破，跌破的地板變成上方壓力，再往下找下一道地板
-    - 股價漲離地板超過 12%，而且中間出現兩星以上的新地板 → 地板往上移"""
-    px = s["price"]
-    pf = (prev or {}).get("floor")
-    s["fb"], s["broken"] = 0, None
-    if not pf or not pf[0]:
-        return cands
-    lo, hi, stars = pf[0], pf[1], pf[2] or 1
-    base = next((c for c in cands if abs(c["mid"] - (lo + hi) / 2) / px < 0.02), None)   # 今天的資料還看得到同一個地板嗎
-    locked = dict(base) if base else {"lo": lo, "hi": hi, "mid": round((lo + hi) / 2, 2), "w": 0, "src": list((prev or {}).get("fsrc") or ["之前找到的成交密集區"]),
-                                       "score": 0, "stars": stars}
-    locked["lo"], locked["hi"], locked["since"] = lo, hi, (prev or {}).get("fsince")
-    if px < lo * 0.98:
-        n = ((prev or {}).get("fb") or 0) + 1
-        if n >= 2:   # 跌破確定：換下一道地板
-            s["broken"] = {"lo": lo, "hi": hi, "stars": stars, "days": n}
-            below = [c for c in cands if c["hi"] < lo * 0.99]
-            return below
-        s["fb"] = n
-    up = [c for c in cands if c["lo"] > hi * 1.02 and c["stars"] >= 2 and px > hi * 1.12]
-    if up:   # 股價漲上去、上面形成新的地板 → 地板上移
-        return [up[0]] + [c for c in cands if c is not up[0]]
-    locked["dist"] = round((px / (lo if px < lo else hi) - 1) * 100, 1)
-    rest = [c for c in cands if c["hi"] < lo * 0.99]
-    return [locked] + rest
-
-
 def floors(price, vp, vp_y, o):
-    """地板：現價下方的成交量山峰，再看選擇權賣權有沒有在同一個價位堆積（兩個重疊＝比較可靠）"""
-    cands = []
-    for src, p in (("3 個月成交密集", vp), ("一年成交密集", vp_y)):
-        if not p:
-            continue
-        for nd in nodes(p):
+    """地板只看成交量：近 3 個月成交量分佈裡，現價上下 15% 範圍內成交最多的山峰。
+    它可以在現價上面（＝已經跌破）。另外列出現價下方的下一個成交山峰當「下一道支撐」。
+    選擇權不會移動地板的位置，只用來加 ★（賣權未平倉也堆在這裡＝更可靠）。"""
+    def peaks(p, src):
+        out = []
+        for nd in nodes(p) if p else []:
             mid = (nd["lo"] + nd["hi"]) / 2
-            if mid < price * 0.995 and mid > price * 0.75:
-                cands.append({"lo": nd["lo"], "hi": nd["hi"], "mid": round(mid, 2), "w": nd["w"], "src": [src]})
-    pw0 = (o or {}).get("put_wall")
-    if pw0 and price * 0.75 < pw0 < price * 0.995 and not any(c["lo"] * 0.985 <= pw0 <= c["hi"] * 1.015 for c in cands):
-        st = (vp or vp_y or {}).get("step") or pw0 * 0.01
-        cands.append({"lo": pw0 - st / 2, "hi": pw0 + st / 2, "mid": pw0, "w": 0.3, "src": []})
-    # 合併很接近的候選（3% 以內）
-    cands.sort(key=lambda c: -c["mid"])
-    merged = []
-    for c in cands:
-        if merged and abs(merged[-1]["mid"] - c["mid"]) / c["mid"] < 0.03:
-            m = merged[-1]
-            m["lo"], m["hi"] = min(m["lo"], c["lo"]), max(m["hi"], c["hi"])
-            m["mid"] = round((m["lo"] + m["hi"]) / 2, 2)
-            m["w"] = round(min(1.6, max(m["w"], c["w"]) + 0.25), 2)
-            m["src"] = sorted(set(m["src"] + c["src"]))
-        else:
-            merged.append(dict(c))
+            if price * 0.75 < mid < price * 1.15:
+                out.append({"lo": nd["lo"], "hi": nd["hi"], "mid": round(mid, 2), "w": nd["w"], "src": [src]})
+        return out
+    p3 = peaks(vp, "近 3 個月成交量最多")
+    near = [c for c in p3 if price * 0.85 <= c["mid"] <= price * 1.15]
+    if not near:
+        near = [c for c in peaks(vp_y, "近一年成交量最多") if price * 0.85 <= c["mid"] <= price * 1.15]
+    if not near:
+        return []
+    main = max(near, key=lambda c: c["w"])
+    out = [main]
+    below = [c for c in p3 + peaks(vp_y, "一年成交密集") if c["hi"] < min(main["lo"], price) * 0.99]
+    if below:
+        nxt = max(below, key=lambda c: c["mid"])   # 最近的下一個山峰
+        nxt["src"] = ["下一個成交山峰（" + nxt["src"][0].replace("成交量最多", "成交密集") + "）"]
+        out.append(nxt)
     pw, ph = (o or {}).get("put_wall"), (o or {}).get("put_hot")
-    strikes = {s[0]: s for s in (o or {}).get("strikes") or []}
-    put_oi_max = max((s[2] for k, s in strikes.items() if k <= price), default=0) or 1
-    for m in merged:
-        score = m["w"]
+    strikes = {x[0]: x for x in (o or {}).get("strikes") or []}
+    put_oi_max = max((x[2] for x in strikes.values()), default=0) or 1
+    for m in out:
+        score = 1.0 if m is main else 0.6
         band = (m["lo"] * 0.985, m["hi"] * 1.015)
-        oi_here = sum(s[2] for k, s in strikes.items() if band[0] <= k <= band[1])
+        oi_here = sum(x[2] for k, x in strikes.items() if band[0] <= k <= band[1])
         if pw and band[0] <= pw <= band[1]:
             score += 0.8
             m["src"].append(f"賣權未平倉最多 ${pw:g}")
@@ -493,10 +462,8 @@ def floors(price, vp, vp_y, o):
             m["src"].append(f"今天賣權最熱 ${ph:g}")
         m["score"] = round(score, 2)
         m["stars"] = 3 if score >= 1.8 else 2 if score >= 1.1 else 1
-        m["dist"] = round((price / m["hi"] - 1) * 100, 1)
-    # 第一道地板：最近的一個，但太弱（一顆星）而下面有更強的、而且差不到 4%，就用強的
-    merged = [m for m in merged if m["score"] >= 0.6][:4] or merged[:2]
-    return merged
+        m["dist"] = round((price / (m["lo"] if price < m["lo"] else m["hi"]) - 1) * 100, 1) if not (m["lo"] <= price <= m["hi"]) else 0.0
+    return out
 
 
 def rv(closes, n=20, detail=False):
@@ -517,20 +484,16 @@ def read(s, prev, hist):
     """白話解讀，回傳 [(好/壞/中, 文字)]"""
     o, out = s.get("opt") or {}, []
     f = s["floors"][0] if s["floors"] else None
-    b = s.get("broken")
-    if b:
-        out.append(("bad", f"地板 ${b['lo']:,.0f}–{b['hi']:,.0f} 已連續 {b['days']} 天收在下方 2% 以上，確定跌破，現在變成上方壓力"
-                    + (f"；下一道地板 ${f['lo']:,.0f}–{f['hi']:,.0f}（{'★' * f['stars']}），距離 {f['dist']:.1f}%" if f else "；下方暫時沒有明顯的成交密集區")))
-    elif f and s.get("fb"):
-        out.append(("bad", f"今天收在地板 ${f['lo']:,.0f}–{f['hi']:,.0f} 下方 2% 以上（第 {s['fb']} 天）。明天收盤還在下面，就判定跌破"))
-    if f and not b and not s.get("fb"):
+    if f:
         stars = "★" * f["stars"]
         if s["price"] < f["lo"]:
-            out.append(("bad", f"收在第一道地板 ${f['lo']:,.0f}–{f['hi']:,.0f} 下方，地板暫時失守，下一道看 ${s['floors'][1]['hi']:,.0f}" if len(s["floors"]) > 1 else f"收在地板 ${f['lo']:,.0f} 下方，地板暫時失守"))
-        elif f["dist"] <= 3:
-            out.append(("mid", f"正在測試地板 ${f['lo']:,.0f}–{f['hi']:,.0f}（{stars}），只差 {f['dist']:.1f}%。守住的話常會反彈，跌破要小心"))
+            nx = s["floors"][1] if len(s["floors"]) > 1 else None
+            out.append(("bad", f"收在地板 ${f['lo']:,.0f}–{f['hi']:,.0f} 下方 {abs(f['dist']):.1f}%（跌破地板）"
+                        + (f"；下一個成交山峰在 ${nx['lo']:,.0f}–{nx['hi']:,.0f}" if nx else "；下方暫時沒有明顯的成交山峰")))
+        elif s["price"] <= f["hi"] * 1.03:
+            out.append(("mid", f"正在測試地板 ${f['lo']:,.0f}–{f['hi']:,.0f}（{stars}）。守住的話常會反彈，跌破要小心"))
         else:
-            out.append(("good", f"離第一道地板 ${f['lo']:,.0f}–{f['hi']:,.0f}（{stars}）還有 {f['dist']:.1f}%"))
+            out.append(("good", f"離地板 ${f['lo']:,.0f}–{f['hi']:,.0f}（{stars}）還有 {f['dist']:.1f}%"))
     sk, skp = o.get("skew"), (prev.get("skew") if prev else None)
     if sk is not None:
         if skp is not None and sk - skp >= 1:
@@ -568,13 +531,11 @@ def read(s, prev, hist):
 
 def status(s):
     f = s["floors"][0] if s["floors"] else None
-    if s.get("broken"):
-        return "已跌破地板", "bad"
     if not f:
         return "—", "mid"
     if s["price"] < f["lo"]:
-        return ("跌破中（觀察）", "bad") if s.get("fb") else ("略低於地板", "mid")
-    if f["dist"] <= 3:
+        return "跌破地板", "bad"
+    if s["price"] <= f["hi"] * 1.03:
         return "測試地板", "mid"
     return "地板上方", "good"
 
@@ -593,7 +554,7 @@ def snap(s):
     return {"p": s["price"], "lo": s.get("low"), "oi": o.get("oi"), "oi_c": o.get("oi_c"), "oi_p": o.get("oi_p"),
             "iv30": o.get("iv30"), "atm30": o.get("atm30"), "atm90": o.get("atm90"), "skew": o.get("skew"),
             "pc_vol": o.get("pc_vol"), "floor": [f.get("lo"), f.get("hi"), f.get("stars")] if f else None,
-            "term": o.get("term"), "fb": s.get("fb", 0), "fsince": s.get("fsince"), "fsrc": f.get("src") if f else None}
+            "term": o.get("term")}
 
 
 def track(stocks, date, after_close):
@@ -625,7 +586,7 @@ def track(stocks, date, after_close):
         for s in stocks:
             o, h = s.get("opt") or {}, s["hist"]
             f = s["floors"][0] if s["floors"] else None
-            if (not f and not s.get("broken")) or not o or len(h) < 2:
+            if not f or not o or len(h) < 2:
                 continue   # 至少要有兩天的紀錄才比較得出變化
             prev, prev2 = h[-1][1], h[-2][1]
             sk, sk1, sk2 = o.get("skew"), prev.get("skew"), prev2.get("skew")
@@ -639,16 +600,15 @@ def track(stocks, date, after_close):
                 why = [f"盤中碰到地板 ${f['lo']:,.0f}–{f['hi']:,.0f}（{'★' * f['stars']}：{'、'.join(f['src'])}），收盤守住",
                        f"偏斜連兩天下降：{sk2:.1f} → {sk1:.1f} → {sk:.1f}（買保險的人變少）",
                        f"賣權/買權成交量 {pc1}% → {pc}%"]
-            # 跌破地板：記住的地板（兩星以上）連續兩天收在下方 2% 以上，而且偏斜上升或賣權未平倉增加
-            b = s.get("broken")
-            if not kind and b and (b.get("stars") or 0) >= 2 and ((None not in (sk, sk1) and sk > sk1) or o.get("oi_p", 0) > (prev.get("oi_p") or 1e18)):
+            # 跌破地板：連續兩天收在地板（兩星以上）下方 2% 以上，而且偏斜上升或賣權未平倉增加
+            if (not kind and f and f["stars"] >= 2 and s["price"] < f["lo"] * 0.98 and prev["p"] < f["lo"] * 0.98
+                    and ((None not in (sk, sk1) and sk > sk1) or o.get("oi_p", 0) > (prev.get("oi_p") or 1e18))):
                 kind = "跌破地板"
-                why = [f"連續 {b['days']} 天收在地板 ${b['lo']:,.0f}–{b['hi']:,.0f} 下方 2% 以上（{'★' * b['stars']}）",
+                nx = s["floors"][1] if len(s["floors"]) > 1 else None
+                why = [f"連續兩天收在地板 ${f['lo']:,.0f}–{f['hi']:,.0f} 下方 2% 以上",
                        (f"偏斜 {sk1:.1f} → {sk:.1f}" if None not in (sk, sk1) else "偏斜資料不足")
                        + (f"，賣權未平倉 {o['oi_p'] - prev['oi_p']:+,} 口" if prev.get("oi_p") else ""),
-                       (f"下一道地板 ${f['lo']:,.0f}–{f['hi']:,.0f}" if f else "下方暫時沒有明顯的成交密集區"),
-                       f"跌破的 ${b['lo']:,.0f}–{b['hi']:,.0f} 之後會變成上方壓力"]
-                f = f or {"lo": b["lo"], "hi": b["hi"], "stars": b["stars"]}
+                       (f"下一個成交山峰 ${nx['lo']:,.0f}–{nx['hi']:,.0f}" if nx else "下方暫時沒有明顯的成交山峰")]
             if not kind or (s["sym"], kind) in recent:
                 continue
             x = {"id": f"{date}-{s['sym']}-{kind}", "date": date, "sym": s["sym"], "name": s["zh"], "type": kind,
@@ -912,16 +872,12 @@ def detail(s):
     h = s.get("hist") or []
     rs = "".join(f'<li class="{k}"><i>{"▲" if k == "good" else "▼" if k == "bad" else "•"}</i><span>{E(t)}</span></li>' for k, t in s["read"])
     fl = ""
-    b = s.get("broken")
-    if b:
-        fl += (f'<div class="fr broke"><b>已跌破</b><span class="rg">${b["lo"]:,.0f}–{b["hi"]:,.0f}</span><span class="st">{"★" * b["stars"]}</span>'
-               f'<span class="ds">現在是壓力</span><small>連續 {b["days"]} 天收在這個地板下方 2% 以上，判定跌破。之前在這裡買的人現在虧損，漲回來容易遇到賣壓。</small></div>')
     for j, f in enumerate(s["floors"][:3]):
-        fl += (f'<div class="fr{" first" if j == 0 else ""}"><b>{"第一道" if j == 0 else "第二道" if j == 1 else "第三道"}</b>'
+        fl += (f'<div class="fr{" first" if j == 0 else ""}"><b>{"地板" if j == 0 else "下一道"}</b>'
                f'<span class="rg">${f["lo"]:,.0f}–{f["hi"]:,.0f}</span><span class="st">{"★" * f["stars"]}{"☆" * (3 - f["stars"])}</span>'
-               f'<span class="ds">{"已跌破" if s["price"] < f["lo"] else f"距 {f["dist"]:.1f}%"}</span>'
+               f'<span class="ds">{"已跌破 " + f"{f["dist"]:.1f}%" if s["price"] < f["lo"] else "現價在區間內" if f["dist"] == 0 else f"距 {f["dist"]:.1f}%"}</span>'
                f'<small>{E("、".join(f["src"]))}'
-               + (f'・從 {s["fsince"][5:].replace("-", "/")} 開始追蹤這道地板' if j == 0 and s.get("fsince") else "") + '</small></div>')
+               + '</small></div>')
     iv_hist = [x[1].get("iv30") for x in h] + [o.get("iv30")]
     sk_hist = [x[1].get("skew") for x in h] + [o.get("skew")]
     oi_hist = [x[1].get("oi") for x in h] + [o.get("oi")]
@@ -1017,10 +973,10 @@ def overview(stocks, mkt, sig):
                  + (f'<i class="cw" style="left:{P(o["call_wall"]):.1f}%"></i>' if o.get("call_wall") else "")
                  + f'<i class="pt {status(s)[1]}" style="left:{P(s["price"]):.1f}%"></i></div></div>')
     n_test = sum(1 for s in stocks if status(s)[0] == "測試地板")
-    n_break = sum(1 for s in stocks if status(s)[0] in ("跌破中（觀察）", "已跌破地板", "略低於地板"))
+    n_break = sum(1 for s in stocks if status(s)[0] == "跌破地板")
     sk_up = [s["zh"] for s in stocks if (s.get("opt") or {}).get("skew") is not None and (s.get("prev") or {}).get("skew") is not None and s["opt"]["skew"] - s["prev"]["skew"] >= 1]
     inv = [s["zh"] for s in stocks if ((s.get("opt") or {}).get("term_slope") or 0) < -1]
-    lines = [f"10 檔裡 <b>{n_test}</b> 檔正在測試地板、<b>{n_break}</b> 檔收在記住的地板下方。"]
+    lines = [f"10 檔裡 <b>{n_test}</b> 檔正在測試地板、<b>{n_break}</b> 檔跌破地板。"]
     if sk_up:
         lines.append(f"偏斜明顯升高（保險變貴）：{E('、'.join(sk_up))}。")
     if inv:
@@ -1053,12 +1009,12 @@ def signals_html(sig):
 
 HOW = '''<section id="how"><div class="card how">
 <h2>看哪些股票</h2><p>每天抓在美國掛牌的股票市值前 10 大（Nasdaq 股票篩選器），台積電 TSM 這類外國公司的 ADR 也算。同一家公司有兩種股票時只看一檔：Alphabet 看 <b>GOOG</b>（不看 GOOGL）。</p>
-<h2>地板怎麼找</h2><ol>
-<li><b>成交量分佈（Volume Profile）</b>：把近 3 個月每一小時的成交量，平均分到那一小時的最低價到最高價之間，累加起來。成交特別多的價位（山峰）代表很多人的成本在這裡，跌到這裡常會有人接。也另外看一年的日線分佈。</li>
-<li><b>賣權未平倉</b>：所有到期日加總，看哪個履約價的賣權（下跌保險）堆最多。很多人在這個價位買保險或賣保險，造市商避險的買盤也常在這裡出現。</li>
-<li><b>今天賣權成交最熱的履約價</b>：當天大家押注的價位。</li>
-</ol><p>這三個在同一個價位重疊越多，★ 越多，地板越可靠。</p>
-<p><b>地板會被記住</b>：找到之後每天沿用同一個價位，不會因為股價往下跌就跟著往下換。連續 2 天收在地板下方 2% 以上，才判定「跌破」，跌破的地板改當上方壓力，再往下找下一道地板。只有股價漲離地板超過 12%、上面形成兩星以上的新地板時，地板才會往上移。</p>
+<h2>地板怎麼找（只看成交量）</h2>
+<p><b>成交量分佈（Volume Profile）</b>：把近 3 個月每一小時的成交量，平均分到那一小時的最低價到最高價之間，累加起來，就知道每個價位成交了多少股。<b>現價上下 15% 範圍內成交最多的那個價位區間＝地板</b>，代表最多人的成本在這裡。</p>
+<p>成交量分佈看的是 3 個月，每天變動很小，所以地板會留在原地：股價在它上面＝地板上方；在區間裡或剛好在上方 3% 內＝測試地板；跌到區間下面＝<b>跌破地板</b>。另外列出現價下方的下一個成交山峰，當作跌破後的下一道支撐。</p>
+<p>★ 是可信度：地板本身一顆星；如果選擇權的賣權未平倉也堆在同一個價位（很多人在這裡買保險或賣保險），或今天賣權成交最熱的履約價也在這裡，就加星。選擇權<b>不會改變</b>地板的位置。</p>
+<h2>壓力怎麼找（只看選擇權）</h2>
+<p>現價上方<b>買權未平倉最多</b>的履約價。很多人押漲到這裡、也有很多人在這裡賣出買權，股價接近時常常漲不上去。</p>
 <h2>選擇權的情緒指標</h2><ul>
 <li><b>總未平倉＋變化</b>：一個總數和比前一天的變化，並看變化主要來自買權還是賣權。</li>
 <li><b>30 天隱含波動度（IV30）</b>：選擇權價格反推出來、市場預期未來一個月的波動。</li>
@@ -1066,9 +1022,9 @@ HOW = '''<section id="how"><div class="card how">
 <li><b>期限結構</b>：不同到期日的價平隱含波動度。短天期比長天期貴（倒掛）通常是市場緊張或有財報等事件。</li>
 <li><b>隱含 − 實際波動</b>：隱含波動度減掉近 20 天實際波動。差很多代表選擇權偏貴。</li>
 <li><b>賣權/買權成交量、最大痛點、預期波動</b>：最大痛點是月結算日讓選擇權買方整體賠最多的價格；預期波動用 30 天價平跨式價格估算。</li></ul>
-<h2>什麼時候會通知</h2><ul>
-<li><b>🟢 守住地板</b>：盤中碰到兩星以上的地板、收盤守住，而且偏斜連續兩天下降（合計至少 1.5）、賣權/買權成交量也下降。</li>
-<li><b>🔻 跌破地板</b>：記住的地板（兩星以上）連續兩天收在下方 2% 以上，而且偏斜上升或賣權未平倉增加。</li></ul>
+<h2>什麼時候會通知（不是買賣建議，是提醒你該注意了）</h2><ul>
+<li><b>🟢 守住地板</b>：盤中碰到兩星以上的地板、收盤守住，而且偏斜連續兩天下降（合計至少 1.5）、賣權/買權成交量也下降。意思是「這裡有人接、恐慌在退」，可以當作進場的觀察點。</li>
+<li><b>🔻 跌破地板</b>：連續兩天收在兩星以上地板下方 2% 以上，而且偏斜上升或賣權未平倉增加。意思是「這裡沒人接、恐慌在升」，先別急著接，手上有的要想好停損。</li></ul>
 <p>同一檔同一種訊號 20 天內只通知一次。每個訊號會記下來，之後追蹤 5／20／60 個交易日的漲跌，看這套方法準不準。</p>
 <p class="src">資料：Nasdaq（市值）、Cboe 延遲報價（選擇權）、Yahoo Finance（股價）。每個美股交易日收盤後（台北時間早上）更新。</p>
 <p class="disc">這是用公開數字整理出來的分析，不是投資建議。</p></div></section>'''
@@ -1125,12 +1081,7 @@ def main():
         except Exception as ex:
             print("options error", u["sym"], ex, file=sys.stderr)
             s["opt"] = None
-        prevd = [d for d in hist_days() if d < daily[-1]["d"]]
-        prev_snap = load(f"data/us_history/{prevd[-1]}.json", {}).get(u["sym"]) if prevd else None
-        s["floors"] = lock_floor(s, prev_snap, floors(s["price"], s["vp"], s["vp_y"], s["opt"]))
-        f0 = s["floors"][0] if s["floors"] else None
-        same = f0 and prev_snap and prev_snap.get("floor") and prev_snap["floor"][0] == f0["lo"]
-        s["fsince"] = prev_snap.get("fsince") if same else daily[-1]["d"]
+        s["floors"] = floors(s["price"], s["vp"], s["vp_y"], s["opt"])
         stocks.append(s)
         print(u["sym"], s["price"], "floors", [(f["lo"], f["hi"], f["stars"]) for f in s["floors"]],
               "opt", s["opt"] and {k: s["opt"].get(k) for k in ("oi", "iv30", "skew", "pc_vol", "put_wall", "call_wall")})
