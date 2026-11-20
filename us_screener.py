@@ -204,7 +204,8 @@ def nasdaq_chain(sym, spot, today):
         T = max(dte, 0.5) / 365
         for cp, pre in (("C", "c_"), ("P", "p_")):
             bid, ask, last = f(r.get(pre + "Bid")), f(r.get(pre + "Ask")), f(r.get(pre + "Last"))
-            px = (bid + ask) / 2 if bid > 0 and ask > 0 else 0
+            # 盤後買賣價常常是空的，就改用最後成交價（收盤前最後一筆）
+            px = (bid + ask) / 2 if bid > 0 and ask > 0 else last
             iv = implied(px, spot, k, T, cp) if px and dte >= 0 else None
             delta = bs(spot, k, T, iv, cp)[1] if iv else 0
             out.append({"exp": exp, "dte": dte, "cp": cp, "k": k, "oi": f(r.get(pre + "Openinterest")),
@@ -241,7 +242,7 @@ def nice_step(raw):
 
 def atm_iv(ch, spot, exp):
     """某個到期日的價平隱含波動度：最接近現價的履約價，買權賣權平均"""
-    legs = [x for x in ch if x["exp"] == exp and x["iv"] > 1 and x["bid"] > 0]
+    legs = [x for x in ch if x["exp"] == exp and x["iv"] > 1 and (x["bid"] > 0 or x["theo"] > 0)]
     if not legs:
         return None
     ks = sorted({x["k"] for x in legs}, key=lambda k: abs(k - spot))[:2]
@@ -250,7 +251,7 @@ def atm_iv(ch, spot, exp):
 
 
 def delta_iv(ch, exp, target):
-    legs = [x for x in ch if x["exp"] == exp and x["iv"] > 1 and x["bid"] > 0 and x["delta"]]
+    legs = [x for x in ch if x["exp"] == exp and x["iv"] > 1 and (x["bid"] > 0 or x["theo"] > 0) and x["delta"]]
     if not legs:
         return None
     legs = sorted((x for x in legs if (x["delta"] < 0) == (target < 0)), key=lambda x: x["delta"])
