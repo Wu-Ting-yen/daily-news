@@ -314,6 +314,9 @@ def options(sym, spot, today):
         p10 = delta_iv(ch, e30, -0.10)
         o["p25"], o["c25"], o["p10"] = p25, c25, p10
         o["skew"] = round(p25 - c25, 2) if p25 and c25 else None
+        if o["skew"] is None:   # 除錯：列出這個到期日靠近 25 Delta 的合約
+            legs = sorted((x for x in ch if x["exp"] == e30 and abs(x["k"] / spot - 1) < 0.15), key=lambda x: (x["cp"], x["k"]))
+            print("skew debug", sym, e30, [(x["cp"], x["k"], x["bid"], x["ask"], round(x["iv"], 1), round(x["delta"], 2)) for x in legs], file=sys.stderr)
         # 預期波動：30 天價平跨式（買權＋賣權）的價格 ÷ 股價
         legs = [x for x in ch if x["exp"] == e30]
         if legs:
