@@ -313,6 +313,13 @@ details.full{border-top:1px solid var(--line)}
 .ind-t.us td.good{color:var(--fogdeep)}.ind-t.us td.mid{color:var(--copper)}.ind-t.us td.bad{color:#a5574a}
 .ind-t.us td{font:600 14px "Cormorant Garamond",serif}
 .sig.good .tag{background:var(--fogdeep)}.sig.bad .tag{background:#a5574a}
+details.how2{border:0;margin-top:8px}
+details.how2>summary{padding:4px 0;font-size:12px;color:var(--copper);justify-content:flex-start;gap:4px}
+details.how2>summary::after{content:"▾";font-size:11px}
+details.how2[open]>summary::after{content:"▴"}
+details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6px}
+details.how2 b{color:var(--copper);font-weight:700}
+.ostats>div:has(details.how2[open]){grid-column:1/-1}
 .src{font-size:12px;color:var(--sub);margin-top:10px}
 </style>
 </head>
