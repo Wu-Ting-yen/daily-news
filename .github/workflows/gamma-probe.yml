@@ -1,0 +1,20 @@
+name: 一次性 gamma 選股資料
+on:
+  push:
+    branches: [claude/project-thread-s4f212]
+    paths: [tools/gamma_fetch.py, .github/workflows/gamma-probe.yml, probe_gamma/trigger*]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: TAG=$(date -u +%Y%m%d-%H%M) python tools/gamma_fetch.py
+      - run: |
+          git config user.name "news-bot"; git config user.email "news-bot@users.noreply.github.com"
+          git add probe_gamma; git commit -m "gamma probe data" || exit 0
+          for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done
