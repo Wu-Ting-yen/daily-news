@@ -1017,10 +1017,10 @@ def overview(stocks, mkt, sig):
                  + (f'<i class="cw" style="left:{P(o["call_wall"]):.1f}%"></i>' if o.get("call_wall") else "")
                  + f'<i class="pt {status(s)[1]}" style="left:{P(s["price"]):.1f}%"></i></div></div>')
     n_test = sum(1 for s in stocks if status(s)[0] == "測試地板")
-    n_break = sum(1 for s in stocks if status(s)[0] == "跌破地板")
+    n_break = sum(1 for s in stocks if status(s)[0] in ("跌破中（觀察）", "已跌破地板", "略低於地板"))
     sk_up = [s["zh"] for s in stocks if (s.get("opt") or {}).get("skew") is not None and (s.get("prev") or {}).get("skew") is not None and s["opt"]["skew"] - s["prev"]["skew"] >= 1]
     inv = [s["zh"] for s in stocks if ((s.get("opt") or {}).get("term_slope") or 0) < -1]
-    lines = [f"10 檔裡 <b>{n_test}</b> 檔正在測試地板、<b>{n_break}</b> 檔已跌破第一道地板。"]
+    lines = [f"10 檔裡 <b>{n_test}</b> 檔正在測試地板、<b>{n_break}</b> 檔收在記住的地板下方。"]
     if sk_up:
         lines.append(f"偏斜明顯升高（保險變貴）：{E('、'.join(sk_up))}。")
     if inv:
