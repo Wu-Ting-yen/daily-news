@@ -77,6 +77,8 @@ def universe():
     basic = get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L") or []
     day = get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL") or []
     close = {d["Code"]: num(d["ClosingPrice"]) for d in day}
+    for d in day:
+        OFFICIAL[d["Code"]] = official(d, "ClosingPrice", "HighestPrice", "LowestPrice", "TradeVolume")
     out += top(basic, close, "TW")
     # 上櫃
     basic = get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O") or []
@@ -87,8 +89,23 @@ def universe():
         print("tpex close keys", list(day[0].keys())[:12])
     close = {str(pick(d, "SecuritiesCompanyCode", "Code", "代號") or "").strip(): num(pick(d, "Close", "ClosingPrice", "收盤"))
              for d in day}
+    for d in day:
+        c = str(pick(d, "SecuritiesCompanyCode", "Code", "代號") or "").strip()
+        OFFICIAL[c] = official(d, "Close", "High", "Low", "TradingShares")
     out += top(basic, close, "TWO")
     return out
+
+
+OFFICIAL = {}   # 證交所／櫃買中心公布的最新收盤（Yahoo 晚上常少最後一天，用這個補）
+
+
+def official(d, kc, kh, kl, kv):
+    raw = "".join(ch for ch in str(pick(d, "Date", "日期") or "") if ch.isdigit())
+    if len(raw) == 7:
+        raw = str(int(raw[:3]) + 1911) + raw[3:]
+    date = f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}" if len(raw) == 8 else None
+    c = num(pick(d, kc))
+    return {"date": date, "c": c, "h": num(pick(d, kh)) or c, "l": num(pick(d, kl)) or c, "v": num(pick(d, kv)) or 0}
 
 
 def top(basic, close, mkt):
@@ -1495,9 +1512,15 @@ def main():
     backfill = {d: load(f"data/history/{d}.json", {"_bf": 1}) for d in back}
     n_before = {d: len(v) for d, v in backfill.items()}
 
-    stocks = []
+    stocks, n_fix = [], 0
     for u in uni:
         h, hlv = yahoo(u["code"] + "." + u.get("mkt", "TW"), full=True)
+        of = OFFICIAL.get(u["code"])
+        if h and of and of["c"] and of["date"] == last_date and h[-1][0] < last_date:
+            # Yahoo 少了最新一天（常發生在晚上），用交易所公布的收盤補上
+            h = h + [(last_date, of["c"])]
+            hlv = hlv + [(of["h"], of["l"], of["v"])]
+            n_fix += 1
         u["vp"] = vprofile(hlv[-60:], 16)
         time.sleep(0.3)
         if len(h) < 20:
@@ -1524,6 +1547,7 @@ def main():
         s.pop("hist", None)
         s.pop("hlv", None)
         stocks.append(s)
+    print("filled latest close from exchange", n_fix, "dates seen", sorted({v["date"] for v in OFFICIAL.values() if v.get("date")})[-3:])
     for d, snap in backfill.items():
         if len(snap) > n_before[d] and len(snap) > 50:
             save(f"data/history/{d}.json", snap)
