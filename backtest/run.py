@@ -229,6 +229,44 @@ def pick(d, mkt_dd):
     return out[:R["picks"]]
 
 
+
+# ---------- 檢查資料 ----------
+print("fund 檔數", len(fund), "px 檔數", len(px))
+for y in (2002, 2004, 2006, 2008, 2010, 2012, 2015, 2018, 2022, 2026):
+    d = day(f"{y}-06-30")
+    nq = sum(1 for c in fund if len(known_q(c, d)) >= 4)
+    nr = sum(1 for c in fund if rev_parts(c, d)[0])
+    nf = sum(1 for c in list(fund)[:400] if fwd_eps(c, d))
+    lq = liquid(d)
+    print(y, "有4季財報", nq, "有營收", nr, "前400檔能算EPS", nf, "流動性前300有財報", sum(1 for c in lq if c in fund))
+for y in (2001, 2002, 2003, 2004):
+    ks = [d for d in margin if iso(d).startswith(str(y))]
+    if ks:
+        v = margin[ks[len(ks)//2]]["tw"]
+        per = v.get("per") or {}
+        hit = sum(1 for c in per if c in px and close_on(c, ks[len(ks)//2]))
+        print(y, "融資明細檔數", len(per), "有收盤", hit, "coll", v.get("coll"), "money", v.get("money"))
+c0 = next(iter(fund)); print("fund 範例", c0, json.dumps(fund[c0])[:600])
+
+
+def why_not(d, mkt_dd):
+    cnt = dict(liquid=0, has_fund=0, fell=0, pe=0, med=0, cheap=0)
+    for c in liquid(d):
+        cnt["liquid"] += 1
+        if c not in fund: continue
+        cnt["has_fund"] += 1
+        D, A, C, V = px[c]; k = bisect.bisect_right(D, d)
+        if (C[k - 1] / max(C[max(0, k - 60):k]) - 1) * 100 > mkt_dd - R["fell_more"]: continue
+        cnt["fell"] += 1
+        pe, e, g = fwd_pe(c, d)
+        if not pe or g is None or g <= 0: continue
+        cnt["pe"] += 1
+        med = pe_median(c, d)
+        if not med: continue
+        cnt["med"] += 1
+        if pe / med <= R["cheap"]: cnt["cheap"] += 1
+    return cnt
+
 # ---------- 回測 ----------
 episodes = []
 i, N = 0, len(S)
@@ -262,6 +300,7 @@ while i < N:
         continue
     e = S[entry]
     picks = pick(e["d"], S[entry]["dd"])
+    print("進場", iso(e["d"]), "篩選", why_not(e["d"], S[entry]["dd"]))
     # 第二批
     second = None
     for k in range(entry + 1, min(N, entry + R["second_days"])):
@@ -312,7 +351,7 @@ while i < N:
     # 投組報酬：每檔 10%，沒用到的資金放現金
     port = sum(t["ret"] * t["w"] * (1 / R["picks"]) for t in trades)
     bench = (S[mexit]["ix"] / e["ix"] - 1) * 100
-    episodes.append(dict(stress=iso(S[st0]["d"]), entry=iso(e["d"]), second=iso(S[second]["d"]) if second else None,
+    episodes.append(dict(stress=iso(S[st0]["d"]), entry=iso(e["d"]), second=iso(S[second]["d"]) if second and second < mexit else None,
                          exit=iso(S[mexit]["d"]), why=why, low_mr=round(low_mr, 1), entry_mr=round(e["mr"], 1),
                          entry_ix=round(e["ix"]), low_ix=round(low_ix), dd=round(S[entry]["dd"], 1),
                          m10=round(S[st0]["m10"], 1), trades=trades, port=round(port, 1), bench=round(bench, 1)))
