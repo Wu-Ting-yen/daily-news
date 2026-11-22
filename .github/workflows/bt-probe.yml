@@ -1,0 +1,13 @@
+name: 回測資料測試
+on:
+  push:
+    branches: [claude/project-thread-x3p1pk]
+    paths: [tools/bt_probe.py, .github/workflows/bt-probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python tools/bt_probe.py
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
