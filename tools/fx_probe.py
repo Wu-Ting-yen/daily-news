@@ -1,36 +1,21 @@
-import urllib.request, json, sys, ssl
+import urllib.request, re
 UA = {"User-Agent": "Mozilla/5.0"}
-def get(u, data=None):
+def get(u):
     try:
-        r = urllib.request.urlopen(urllib.request.Request(u, data=data, headers=UA), timeout=40)
-        b = r.read()
-        return r.status, b
+        r = urllib.request.urlopen(urllib.request.Request(u, headers=UA), timeout=40)
+        return r.status, r.read()
     except Exception as e:
         return "ERR", str(e).encode()
-urls = [
- "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?date=20261120&selectType=ALLBUT0999&response=json",
- "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?date=20260105&selectType=ALLBUT0999&response=json",
- "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=20261120&type=ALLBUT0999&response=json",
- "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS_cat?date=20261120&response=json",
- "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS_sort_20?date=20261120&response=json",
- "https://www.cbc.gov.tw/tw/lp-645-1.html",
- "https://www.cbc.gov.tw/tw/lp-302-1.html",
- "https://cpx.cbc.gov.tw/API/DataAPI/Get?FileName=EF15M01",
- "https://www.cbc.gov.tw/public/data/OpenData/%E5%A4%96%E5%8C%AF%E5%B1%80/res.csv",
- "https://data.gov.tw/api/v2/rest/dataset?q=%E5%A4%96%E5%8C%AF%E5%AD%98%E5%BA%95",
- "https://query1.finance.yahoo.com/v8/finance/chart/TWD=X?range=1y&interval=1d",
- "https://www.taifex.com.tw/cht/3/dailyFXRateDown?queryStartDate=2026/11/01&queryEndDate=2026/11/20",
-]
-for u in urls:
-    st, b = get(u)
-    t = b.decode("utf-8", "replace")
+for u in ["https://cpx.cbc.gov.tw/Data/ExportToAPIInfo",
+          "https://data.gov.tw/api/v2/rest/dataset/6025",
+          "https://www.cbc.gov.tw/tw/lp-302-1.html",
+          "https://www.cbc.gov.tw/tw/np-1214-1.html"]:
+    st, b = get(u); t = b.decode("utf-8", "replace")
     print("=====", u, st, len(b))
-    if u.find("MI_QFIIS?") > 0 and st == 200:
-        j = json.loads(t); print(j.get("stat"), j.get("fields")); print((j.get("data") or [])[:3]); print("rows", len(j.get("data") or []))
-        print({k: (str(v)[:300]) for k, v in j.items() if k not in ("data", "fields")})
-    elif "MI_INDEX" in u and st == 200:
-        j = json.loads(t)
-        for tb in j.get("tables", []):
-            print(tb.get("title"), tb.get("fields"), (tb.get("data") or [])[:2])
-    else:
-        print(t[:1500])
+    for m in re.finditer(r".{0,200}(外匯存底|FileName|準備資產|外匯準備).{0,300}", t):
+        print("  >", re.sub(r"\s+", " ", m.group(0))[:500])
+    if "6025" in u: print(t[:3000])
+for fn in ["EF01M01","EF02M01","EF03M01","EG01M01","EG02M01","EF16M01","EF17M01","BP01M01","BP02M01","EF14M01","EF13M01","EF12M01"]:
+    st, b = get("https://cpx.cbc.gov.tw/API/DataAPI/Get?FileName=" + fn)
+    t = b.decode("utf-8", "replace")
+    print("-----", fn, st, len(b), re.sub(r"\s+", " ", t[:600]))
