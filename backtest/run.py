@@ -85,6 +85,8 @@ for d in days:
     otc = margin[d].get("otc") or {}
     ix = taiex.get(d) or tw.get("taiex")
     mr = tw["coll"] / tw["money"] * 100 if tw.get("money") and tw.get("coll") else None
+    if d < day("2004-02-11"):
+        mr = None  # 2004/2 以前證交所沒有全部個股收盤價，估出來的維持率不可靠，不用
     S.append(dict(d=d, ix=ix, money=tw.get("money"), sh=tw.get("sh"), otc=otc.get("sh"), mr=mr, fi=inst.get(d)))
 for i, s in enumerate(S):
     w60 = [x["ix"] for x in S[max(0, i - 59):i + 1]]
@@ -144,11 +146,20 @@ def fwd_eps(c, d):
     nonop, pre = S("TotalNonoperatingIncomeAndExpense"), S("PreTaxIncome")
     tax = S("IncomeTaxExpense") if S("IncomeTaxExpense") is not None else S("TAX")
     ni, par = S("IncomeAfterTaxes"), S("EquityAttributableToOwnersOfParent")
-    last = q[-1]
-    if not rev or rev <= 0 or not last.get("EPS") or not last.get("EquityAttributableToOwnersOfParent"):
+    if not rev or rev <= 0:
         return None
-    shares = last["EquityAttributableToOwnersOfParent"] / last["EPS"]
-    if shares <= 0:
+    shares = None
+    for x in reversed(q):  # 股數 = 母公司淨利 ÷ EPS（舊財報沒有母公司淨利，就用 稅前−所得稅）
+        e = x.get("EPS")
+        n = x.get("EquityAttributableToOwnersOfParent")
+        if n is None:
+            n = x.get("IncomeAfterTaxes")
+        if n is None and x.get("PreTaxIncome") is not None:
+            n = x["PreTaxIncome"] - (x.get("IncomeTaxExpense") if x.get("IncomeTaxExpense") is not None else (x.get("TAX") or 0))
+        if e and n and abs(e) >= 0.1 and n / e > 0:
+            shares = n / e
+            break
+    if not shares:
         return None
     gm = gp / rev if gp is not None else None
     opr = opx / rev if opx is not None else (gm - oi / rev if gm is not None and oi is not None else None)
@@ -268,27 +279,36 @@ def why_not(d, mkt_dd):
     return cnt
 
 # ---------- 回測 ----------
+def stress(x):
+    """流動性風險：指數跌 10%＋融資 10 日減 8%＋維持率 <145%（2004/2 以前沒有維持率，只看前兩項）"""
+    return (x["dd"] <= R["dd_line"] and x["m10"] is not None and x["m10"] <= R["margin_drop"]
+            and (x["mr"] is None or x["mr"] <= R["mr_line"]))
+
+
 episodes = []
 i, N = 0, len(S)
 while i < N:
     s = S[i]
-    if not (s["dd"] <= R["dd_line"] and s["m10"] is not None and s["m10"] <= R["margin_drop"] and s["mr"] and s["mr"] <= R["mr_line"]):
+    if not stress(s):
         i += 1
         continue
     st0 = i
     pre_money = S[max(0, i - 20)]["money"]
     low_mr, low_ix = s["mr"], s["ix"]
+    if low_mr is None:
+        low_mr = 0
     entry = None
     j = i
     last_stress = i
     while j < N and j - last_stress <= R["stress_wait"]:
         x = S[j]
         if x["mr"]:
-            low_mr = min(low_mr, x["mr"])
+            low_mr = min(low_mr, x["mr"]) if low_mr else x["mr"]
         low_ix = min(low_ix, x["ix"])
-        if x["dd"] <= R["dd_line"] and x["m10"] is not None and x["m10"] <= R["margin_drop"] and x["mr"] and x["mr"] <= R["mr_line"]:
+        if stress(x):
             last_stress = j
-        ok = (x["m3"] is not None and x["m3"] > R["calm_3d"] and x["mr"] and x["mr"] >= low_mr + R["mr_rebound"]
+        mr_ok = (x["mr"] >= low_mr + R["mr_rebound"]) if (x["mr"] and low_mr) else x["mr"] is None
+        ok = (x["m3"] is not None and x["m3"] > R["calm_3d"] and mr_ok
               and x["ix"] > x["ma5"] and (x["f3"] is None or x["f3"] > 0))
         if ok and j > st0:
             entry = j
@@ -349,12 +369,22 @@ while i < N:
         trades.append(dict(p, buy=iso(S[entry]["d"]), add=iso(S[second]["d"]) if second and second <= out_k else None,
                            sell=iso(S[out_k]["d"]), why=out_why, ret=round(ret, 1), w=wsum))
     # 投組報酬：每檔 10%，沒用到的資金放現金
-    port = sum(t["ret"] * t["w"] * (1 / R["picks"]) for t in trades)
     bench = (S[mexit]["ix"] / e["ix"] - 1) * 100
+    # 選不滿 10 檔：空的名額照同樣的分批和大盤出場時間買大盤（等同 0050）
+    empty = R["picks"] - len(trades)
+    ix_ret = None
+    if empty > 0:
+        legs = [(R["first"], (S[mexit]["ix"] / e["ix"] - 1) * 100 - R["cost"])]
+        if second and second < mexit:
+            legs.append((1 - R["first"], (S[mexit]["ix"] / S[second]["ix"] - 1) * 100 - R["cost"]))
+        wsum = sum(w for w, _ in legs)
+        ix_ret = sum(w * r for w, r in legs) / wsum
+    port = sum(t["ret"] * t["w"] * (1 / R["picks"]) for t in trades) + (ix_ret * wsum * empty / R["picks"] if empty > 0 else 0)
     episodes.append(dict(stress=iso(S[st0]["d"]), entry=iso(e["d"]), second=iso(S[second]["d"]) if second and second < mexit else None,
-                         exit=iso(S[mexit]["d"]), why=why, low_mr=round(low_mr, 1), entry_mr=round(e["mr"], 1),
+                         exit=iso(S[mexit]["d"]), why=why, low_mr=round(low_mr, 1) if low_mr else None, entry_mr=round(e["mr"], 1) if e["mr"] else None,
                          entry_ix=round(e["ix"]), low_ix=round(low_ix), dd=round(S[entry]["dd"], 1),
-                         m10=round(S[st0]["m10"], 1), trades=trades, port=round(port, 1), bench=round(bench, 1)))
+                         m10=round(S[st0]["m10"], 1), trades=trades, port=round(port, 1), bench=round(bench, 1),
+                         ix_slots=empty, ix_ret=round(ix_ret, 1) if ix_ret is not None else None))
     i = mexit + 1
 
 # 權益曲線（只在每次事件結束時結算，其餘時間現金）
