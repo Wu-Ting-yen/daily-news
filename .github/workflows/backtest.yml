@@ -2,9 +2,12 @@ name: 融資流動性回測
 on:
   workflow_dispatch:
     inputs:
-      data_run:
-        description: "股價與財報資料的 run id"
-        required: true
+      px_run:
+        description: "股價資料的 run id"
+        default: "44974846447"
+      fund_run:
+        description: "財報資料的 run id"
+        default: "44977264084"
 permissions:
   contents: write
   actions: read
@@ -16,9 +19,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
+          name: bt-px
+          path: bt_raw
+          run-id: ${{ inputs.px_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bt-fund-*
           path: bt_raw
           merge-multiple: true
-          run-id: ${{ inputs.data_run }}
+          run-id: ${{ inputs.fund_run }}
           github-token: ${{ github.token }}
       - run: python backtest/fetch_market.py
         env:
