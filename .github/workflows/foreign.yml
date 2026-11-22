@@ -1,0 +1,36 @@
+name: 外資持股
+
+on:
+  schedule:
+    - cron: "25 10 * * 1-5"   # 台北時間 週一到週五 18:25
+  workflow_dispatch:
+  push:
+    branches: [claude/project-thread-x3p1pk]
+    paths: [foreign.py, foreign_page.py, foreign_template.html, .github/workflows/foreign.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: foreign
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 外資持股、外匯存底、匯率
+        run: python foreign.py
+      - name: 儲存
+        run: |
+          git config user.name "news-bot"
+          git config user.email "news-bot@users.noreply.github.com"
+          git add -A data/foreign foreign.html
+          git diff --cached --quiet && exit 0
+          git commit -m "外資持股 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
+          for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; git rebase --abort 2>/dev/null; sleep 5; done
