@@ -3,10 +3,14 @@ UA={"User-Agent":"Mozilla/5.0"}
 def get(u):
     try: return urllib.request.urlopen(urllib.request.Request(u,headers=UA),timeout=40).read().decode("utf-8","replace")
     except Exception as e: return "ERR "+str(e)
-base="https://www.twse.com.tw"
-h=get(base+"/dashboard/zh/credit/margin.html"); print(len(h)); print(h[:2500])
-for s in re.findall(r'src="([^"]+\.js[^"]*)"',h):
-    u=s if s.startswith("http") else base+(s if s.startswith("/") else "/dashboard/zh/credit/"+s)
-    t=get(u); print("=== JS",u,len(t))
-    for m in set(re.findall(r'["\'`](/[^"\'`]*(?:api|rwd|json|dashboard|credit|margin)[^"\'`]*)["\'`]',t)): print("  ",m)
-    for m in list(set(re.findall(r'.{0,80}(?:維持率|maint|Maint).{0,80}',t)))[:30]: print("  >",m)
+B="https://www.twse.com.tw"
+js=get(B+"/dashboard/js/credit-margin.js")
+for m in re.finditer(r'.{0,300}(BFIJ3U|MI_MARGN_HISTORY|MI_MARGN_TREND|marginHistory|tpex-api).{0,300}',js): print("JS>",m.group(0)[:600])
+m=get(B+"/dashboard/js/main.js")
+for x in re.finditer(r'.{0,200}(tpex-api|"/rwd").{0,200}',m): print("MAIN>",x.group(0)[:400])
+for u in ["/rwd/zh/marginTrading/BFIJ3U?response=json","/rwd/zh/marginTrading/BFIJ3U?date=20200319&response=json","/rwd/zh/marginTrading/BFIJ3U?date=20081027&response=json",
+          "/rwd/zh/marginTrading/BFIJ3U_TREND?response=json","/rwd/zh/marginTrading/MI_MARGN_HISTORY?response=json","/rwd/zh/marginTrading/MI_MARGN_TREND?response=json",
+          "/rwd/zh/marginTrading/BFIJ3U_TREND?startDate=20010101&endDate=20261121&response=json","/rwd/zh/marginTrading/MI_MARGN_HISTORY?startDate=20010101&endDate=20261121&response=json"]:
+    t=get(B+u); print("=====",u,len(t)); print(re.sub(r"\s+"," ",t[:1500]))
+for u in ["https://www.tpex.org.tw/tpex-api/dashboardOtc/marginHistory?lang=zh-tw","https://www.twse.com.tw/tpex-api/dashboardOtc/marginHistory?lang=zh-tw","https://www.tpex.org.tw/www/zh-tw/dashboardOtc/marginHistory?lang=zh-tw"]:
+    t=get(u); print("=====",u,len(t)); print(re.sub(r"\s+"," ",t[:1200]))
