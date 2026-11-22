@@ -329,8 +329,26 @@ summary = dict(start=iso(S[0]["d"]), end=iso(S[-1]["d"]), n=len([e for e in epis
                equity=round(eq, 1), bench=round(ix1 / ix0 * 100, 1),
                win=sum(1 for e in episodes if e.get("entry") and e["port"] > 0))
 series = [[iso(s["d"]), round(s["ix"]), round(s["mr"], 1) if s["mr"] else None, round(s["money"] / 1e8) if s["money"] else None] for s in S[::3]]
+# 外資賣超 vs 指數：每週（5 個交易日）外資買賣超合計 對 指數漲跌
+def beta(pairs):
+    if len(pairs) < 20:
+        return None
+    xs, ys = [a for a, _ in pairs], [b for _, b in pairs]
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    vx = sum((x - mx) ** 2 for x in xs)
+    cov = sum((x - mx) * (y - my) for x, y in pairs)
+    vy = sum((y - my) ** 2 for y in ys)
+    return dict(per1000=round(cov / vx * 1000, 2), r2=round(cov * cov / (vx * vy), 2), n=len(pairs))
+wk = []
+for i in range(0, len(S) - 5, 5):
+    f = [x["fi"] for x in S[i + 1:i + 6]]
+    if all(v is not None for v in f):
+        wk.append((sum(f), (S[i + 5]["ix"] / S[i]["ix"] - 1) * 100, S[i]["dd"]))
+flow = dict(all=beta([(a, b) for a, b, _ in wk]), calm=beta([(a, b) for a, b, d in wk if d > -10]),
+            panic=beta([(a, b) for a, b, d in wk if d <= -10]))
+print("外資", flow)
 os.makedirs(os.path.join(ROOT, "data", "bt"), exist_ok=True)
-json.dump(dict(rules=RULES, summary=summary, episodes=episodes, curve=curve, series=series,
+json.dump(dict(rules=RULES, summary=summary, flow=flow, episodes=episodes, curve=curve, series=series,
                now=dict(d=iso(S[-1]["d"]), ix=S[-1]["ix"], mr=S[-1]["mr"], m10=S[-1]["m10"], dd=S[-1]["dd"], m3=S[-1]["m3"]),
                 official=[[k] + [v.get(x) for x in ("keepRate", "callAccNum", "callAmt", "exeAccNum", "exeAmt")] for k, v in sorted(official.items())][-120:]),
           open(os.path.join(ROOT, "data", "bt", "result.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))

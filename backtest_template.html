@@ -142,6 +142,7 @@ details.all summary{padding:10px 0}
 <div class="card" id="chart"><h2>大盤與融資維持率<em>2001–NOW</em></h2>
   <p class="lead">霧藍線是加權指數（左軸，對數刻度），銅色線是估算的上市融資維持率（右軸）。灰色區塊是流動性風險期間，綠點是進場、紅點是出場。</p>
   <div class="chart" id="mchart"><div class="tip"></div></div></div>
+<div class="card" id="flowc"><h2>外資賣超和指數<em>FLOW</em></h2><div id="flowbox"></div></div>
 <div class="card rule" id="rules"><h2>固定規則<em>RULES</em></h2><div id="rulebox"></div></div>
 <div class="card" id="eps"><h2>每一次進出場<em>EPISODES</em></h2><div id="epbox"></div></div>
 <p class="foot">回測結果・不是投資建議</p>
@@ -176,6 +177,9 @@ var O=B.official||[];if(O.length){var o=O[O.length-1],p=O[Math.max(0,O.length-6)
   '<div>處分（斷頭）金額<b>'+((o[5]||0)/1e8).toFixed(1)+'<small> 億</small></b>處分戶數 '+(o[4]||0).toLocaleString()+'</div></div>'+
   '<p class="lead" style="margin-top:6px">官方數字從 '+ymd(O[0][0])+' 才有，所以 2001 年以來的回測用自己估的上市融資維持率；官方的追繳、斷頭數字放在這裡每天追蹤，判斷「斷頭潮是不是在退」：追繳戶數和處分金額連續下降、維持率回升，就是流動性開始變好。</p>';
 }
+/* 外資 */
+var F=B.flow||{};function fl(x,l){return x?'<div>'+l+'<b>'+(x.per1000>0?'':'')+x.per1000.toFixed(2)+'%</b>每 1,000 億・解釋力 '+Math.round(x.r2*100)+'%・'+x.n+' 週</div>':''}
+$('flowbox').innerHTML='<p class="lead">2004 年以來，每週外資買賣超合計和加權指數同一週漲跌的關係：外資每買超（賣超）1,000 億，指數平均漲（跌）多少。分成平常（指數離高點不到 10%）和恐慌（跌超過 10%）兩種情況。</p><div class="sig">'+fl(F.all,'全部期間')+fl(F.calm,'平常時期')+fl(F.panic,'恐慌時期')+'</div><p class="lead" style="margin-top:8px">解釋力代表指數漲跌有幾成跟外資買賣有關，其餘來自融資、內資、消息面等。早期台股市值小，同樣 1,000 億的影響比現在大，所以這是 20 多年的平均。</p>';
 /* 規則 */
 $('rulebox').innerHTML='<p><b>① 什麼時候算流動性風險</b><br>指數從 60 日高點跌超過 '+(-R.dd_line)+'%，而且上市融資金額 10 個交易日內減少超過 '+(-R.margin_drop)+'%，而且估算的融資維持率低於 '+R.mr_line+'%（130% 以下券商開始追繳、斷頭）。三個同時成立的那天記為「風險開始」。</p>'+
  '<p><b>② 什麼時候進場</b>（風險開始後 '+R.stress_wait+' 個交易日內，四個條件同一天成立）<ol><li>融資 3 日減幅縮小到 '+(-R.calm_3d)+'% 以內：斷頭賣壓變小</li><li>維持率比這段期間的最低點回升 '+R.mr_rebound+' 個百分點以上</li><li>加權指數收盤站上 5 日均線</li><li>外資 3 日合計買超（2004 年以前沒有資料，略過這條）</li></ol></p>'+
