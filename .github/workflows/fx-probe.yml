@@ -1,0 +1,11 @@
+name: 外資持股資料測試
+on:
+  push:
+    branches: [claude/project-thread-x3p1pk]
+    paths: [tools/fx_probe.py, .github/workflows/fx-probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python tools/fx_probe.py
