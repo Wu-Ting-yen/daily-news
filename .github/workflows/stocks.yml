@@ -32,6 +32,9 @@ jobs:
           PUSH: ${{ github.event_name != 'push' && '1' || '0' }}
           PAGE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: python screener.py
+      - name: 外資持股頁
+        continue-on-error: true
+        run: python foreign.py
       - name: 儲存
         run: |
           git config user.name "news-bot"

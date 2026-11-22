@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>外資持股</title>
+<meta name="theme-color" content="#ecebe6">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* 米白灰泥 × 霧藍 × 銅 */
+  --plaster:#ecebe6;--plaster2:#e2e0d9;--card:#fbfaf7e6;--text:#2b3440;--sub:#7c8590;--line:#d9d7cf;
+  --fog:#8ea3b6;--fog2:#b9c7d4;--fogdeep:#5f7487;--copper:#8b5a3c;--copper2:#b07a55;
+  --shadow:0 1px 1px #3a33280a,0 6px 18px #3a33280f;
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .33 0 0 0 0 .3 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --stucco:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.045' numOctaves='4' seed='7'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='2.2'%3E%3CfeDistantLight azimuth='225' elevation='52'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme:dark){:root{
+  --plaster:#1d2127;--plaster2:#171a1f;--card:#252a31e6;--text:#e7e4dc;--sub:#9aa1a9;--line:#343a43;
+  --fog:#7f95a9;--fog2:#4a5a6a;--fogdeep:#a9bccd;--copper:#c98f66;--copper2:#d9a47e;--shadow:none;
+}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;color:var(--text);background:var(--plaster);
+  font-family:"Noto Sans TC",-apple-system,"PingFang TC",sans-serif;font-size:16px;line-height:1.6;letter-spacing:.02em}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--grain);opacity:.18;pointer-events:none}
+
+/* 頂部：灰泥牆浮雕 + 霧藍果凍條紋 */
+.navwrap{position:sticky;top:0;z-index:5;padding-top:env(safe-area-inset-top);
+  background:var(--stucco) center/300px,var(--plaster);background-blend-mode:multiply;box-shadow:0 1px 0 var(--line),0 8px 20px -12px #3a332833}
+@media (prefers-color-scheme:dark){.navwrap{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
+header.hero{padding-top:env(safe-area-inset-top);
+  background:var(--stucco) center/300px,var(--plaster);background-blend-mode:multiply;
+  box-shadow:0 1px 0 var(--line),0 8px 20px -12px #3a332833}
+@media (prefers-color-scheme:dark){header.hero{background:var(--stucco) center/300px,#2a2f36;background-blend-mode:soft-light}}
+.top{display:flex;align-items:flex-end;justify-content:space-between;padding:16px 20px 12px}
+.brand{display:flex;flex-direction:column;line-height:1.1}
+.brand small{font:600 12px "Cormorant Garamond",serif;letter-spacing:.38em;color:var(--fogdeep);margin-bottom:6px}
+h1{margin:0;font:700 26px "Noto Serif TC",serif;letter-spacing:.12em;color:var(--text)}
+h1 i{font-style:normal;color:var(--copper)}
+.upd{font:500 12px "Cormorant Garamond","Noto Sans TC",serif;color:var(--sub);letter-spacing:.06em;text-align:right}
+.stripe{height:6px;background:repeating-linear-gradient(90deg,var(--fog) 0 14px,var(--fog2) 14px 22px,#6f7f8f 22px 23px,var(--fog2) 23px 34px);opacity:.75}
+nav{display:flex;gap:8px;overflow-x:auto;padding:12px 16px;scrollbar-width:none;
+  background:linear-gradient(180deg,#ffffff55,#ffffff00)}
+@media (prefers-color-scheme:dark){nav{background:none}}
+nav::-webkit-scrollbar{display:none}
+main{max-width:720px;margin:0 auto;padding:16px 16px calc(48px + env(safe-area-inset-bottom))}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+a{color:inherit;text-decoration:none}
+.back{font:500 12.5px "Noto Sans TC",sans-serif;color:var(--fogdeep);border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:#ffffff8c;white-space:nowrap}
+@media (prefers-color-scheme:dark){.back{background:#ffffff0d}}
+.mk{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 14px}
+.mk>div{border-radius:14px;padding:10px 12px;background:#ffffff8f;border:1px solid #ffffffb0;backdrop-filter:blur(6px);box-shadow:0 4px 14px -8px #3a332840;min-width:0}
+@media (prefers-color-scheme:dark){.mk>div{background:#ffffff10;border-color:#ffffff18}}
+.mk b{display:block;font:600 26px/1.15 "Cormorant Garamond",serif;color:var(--text);margin-top:2px}
+.mk small{font-size:12px;color:var(--sub)}
+@media (max-width:560px){.mk{grid-template-columns:repeat(2,1fr)}}
+.up{color:#b0453a!important}.down{color:#3f7a5a!important}
+.lead{font:500 14px/1.7 "Noto Serif TC",serif;color:var(--sub);margin:4px 2px 14px}
+.card{background:var(--card);backdrop-filter:blur(4px);border-radius:18px;box-shadow:var(--shadow);
+  border:1px solid #ffffffaa;margin-bottom:12px;overflow:hidden;position:relative}
+@media (prefers-color-scheme:dark){.card{border-color:var(--line)}}
+summary{list-style:none;padding:11px 18px;font-size:13px;color:var(--sub);cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"＋";color:var(--copper);font-size:15px}
+details[open] summary::after{content:"－"}
+
+.navlink{flex:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font:500 14px "Noto Sans TC",sans-serif;color:var(--fogdeep);background:#ffffff8c;display:flex;align-items:center;backdrop-filter:blur(6px);white-space:nowrap}
+.navlink.back{color:var(--copper)}
+@media (prefers-color-scheme:dark){.navlink{background:#ffffff0d}}
+.mk b small{font:500 14px "Noto Sans TC",sans-serif;color:var(--sub);margin-left:1px}
+.mk .t{color:var(--copper)!important}.mk .o{color:var(--fogdeep)!important}
+.card{padding:16px 18px}
+.card h2{margin:0 0 4px;font:700 18px/1.4 "Noto Serif TC",serif;letter-spacing:.08em;display:flex;align-items:baseline;gap:8px}
+.card h2 em{font:600 13px "Cormorant Garamond",serif;font-style:normal;color:var(--sub);letter-spacing:.2em}
+.card .lead{margin:0 0 12px;font-size:13.5px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--sub);margin:0 0 8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+.legend i.ln{height:3px;border-radius:2px;vertical-align:3px;width:16px}
+/* 每月橫條 */
+.mrow{display:grid;grid-template-columns:54px 1fr 58px;align-items:center;gap:8px;margin:7px 0}
+.mrow .ml{font:600 15px "Cormorant Garamond",serif;color:var(--sub);letter-spacing:.04em}
+.mrow .bar{display:flex;height:30px;border-radius:8px;overflow:hidden;background:var(--plaster2)}
+.mrow .bar span{display:flex;align-items:center;justify-content:center;font-size:11.5px;color:#fff;white-space:nowrap;overflow:hidden;min-width:0}
+.mrow .bar .bt{background:linear-gradient(180deg,#ffffff22,#0000),var(--copper)}
+.mrow .bar .bo{background:linear-gradient(180deg,#ffffff22,#0000),repeating-linear-gradient(90deg,var(--fog) 0 8px,#9fb2c3 8px 13px)}
+.mrow .mv{font:600 20px "Cormorant Garamond",serif;text-align:right}
+.mrow .mv small{display:block;font:500 11px "Noto Sans TC",sans-serif;color:var(--sub);line-height:1}
+/* 圖表 */
+.chart{position:relative;margin:0 -6px}
+.chart svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y}
+.tip{position:absolute;top:0;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:12px;line-height:1.55;box-shadow:0 6px 16px -8px #3a332860;white-space:nowrap;display:none;z-index:2}
+.tip b{font:600 13px "Cormorant Garamond",serif;color:var(--sub);letter-spacing:.04em}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:0 0 8px}
+.seg button{border:0;background:none;padding:4px 12px;font:500 12.5px "Noto Sans TC",sans-serif;color:var(--sub);cursor:pointer}
+.seg button.on{background:var(--fog);color:#fff}
+/* 表格 */
+.tw{overflow-x:auto;margin:10px -4px 0}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th{font-weight:500;color:var(--sub);font-size:12px;text-align:right;padding:6px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{text-align:right;padding:6px 6px;border-bottom:1px dashed var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td.t{color:var(--copper)}td.o{color:var(--fogdeep)}td b{font-weight:600}
+details.all{margin-top:10px;border-top:1px solid var(--line)}
+details.all summary{padding:10px 0}
+.how{font-size:13.5px;line-height:1.8;color:var(--text)}
+.how p{margin:0 0 8px}.how b{color:var(--copper);font-weight:500}
+.foot{text-align:center;font-size:12px;color:var(--sub);margin-top:20px}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="top">
+    <div class="brand"><small>FOREIGN HOLDINGS</small><h1>外資<i>持股</i></h1></div>
+    <div class="upd">UPDATED<br>{{UPDATED}}</div>
+  </div>
+  <div class="mk" id="mk"></div>
+  <div class="stripe"></div>
+</header>
+<div class="navwrap"><nav>
+  <a class="navlink back" href="./">← 新聞</a><a class="navlink back" href="stocks.html">台股分析</a>
+  <a class="navlink" href="#monthly">每月比例</a><a class="navlink" href="#daily">每日走勢</a><a class="navlink" href="#reserve">外匯存底・匯率</a><a class="navlink" href="#how">怎麼算</a>
+</nav></div>
+<main>
+<p class="lead" id="lead"></p>
+
+<div class="card" id="monthly">
+  <h2>每月外資持股比例<em>MONTHLY</em></h2>
+  <p class="lead">每個月最後一個交易日，外資持有的上市股票市值占全部上市市值的比例。銅色是台積電、霧藍是其他股票，兩段加起來就是右邊的總比例。</p>
+  <div class="legend"><span><i style="background:var(--copper)"></i>台積電</span><span><i style="background:var(--fog)"></i>其他股票</span></div>
+  <div id="mbars"></div>
+  <div class="tw"><table id="mtable"></table></div>
+</div>
+
+<div class="card" id="daily">
+  <h2>每日外資持股<em>DAILY · 2026</em></h2>
+  <p class="lead">2026 年以來每個交易日的比例。手指按住（或滑鼠移過）圖表，可以看那一天的數字、加權指數和匯率。</p>
+  <div class="seg" id="dmode"><button data-m="line" class="on">折線圖</button><button data-m="bar">堆疊長條</button></div>
+  <div class="legend"><span><i class="ln" style="background:var(--fogdeep)"></i>外資總比例</span><span><i class="ln" style="background:var(--copper)"></i>台積電部分</span><span><i class="ln" style="background:var(--fog)"></i>其他股票部分</span></div>
+  <div class="chart" id="dchart"><div class="tip"></div></div>
+  <details class="all"><summary>每天的完整數字（<span id="dcount"></span> 個交易日）</summary><div class="tw"><table id="dtable"></table></div></details>
+</div>
+
+<div class="card" id="reserve">
+  <h2>外匯存底・匯率<em>RESERVES · USD/TWD</em></h2>
+  <p class="lead">外匯存底是央行每個月初公布的上個月底數字（單位：十億美元）。長條是外匯存底，折線是當月最後一個交易日的美元兌新台幣匯率（數字越大＝新台幣越弱）。</p>
+  <div class="legend"><span><i style="background:var(--fog)"></i>外匯存底（左軸，十億美元）</span><span><i class="ln" style="background:var(--copper)"></i>月底匯率（右軸）</span></div>
+  <div class="chart" id="rchart"><div class="tip"></div></div>
+  <div class="tw"><table id="rtable"></table></div>
+</div>
+
+<div class="card how" id="how">
+  <h2>怎麼算的<em>HOW</em></h2>
+  <p><b>外資持股比例</b>＝把每一檔上市股票的「外資持有股數 × 當天收盤價」全部加起來，再除以「每一檔的發行股數 × 收盤價」的總和，也就是外資手上股票的市值占整個上市市場市值的比例。這是新聞常說的「外資持股市值占比」。</p>
+  <p><b>台積電部分</b>＝台積電外資持有的市值 ÷ 整個上市市值。<b>其他</b>＝總比例 − 台積電部分。例如總比例 45%＝台積電 22%＋其他 23%。</p>
+  <p><b>台積電自己的外資比例</b>（表格最右邊）是另一個數字：台積電這一家公司的股票，有幾成在外資手上（通常七成多）。</p>
+  <p>只算上市普通股（不含 ETF、存託憑證、上櫃股票），資料來自證交所每天公布的外資持股統計和收盤價。台積電股價漲跌也會讓「台積電部分」變大變小，不一定是外資真的買賣。</p>
+  <p><b>外匯存底</b>來自中央銀行開放資料；<b>匯率</b>來自期交所每日公布的美元兌新台幣匯率，表格列出月底和當月平均。</p>
+</div>
+<p class="foot">資料日 {{ASOF}}・每個交易日收盤後更新・不是投資建議</p>
+</main>
+<script>
+var D={{DATA}};
+(function(){
+var css=getComputedStyle(document.documentElement);
+function cv(n){return css.getPropertyValue(n).trim()}
+var C={tot:cv('--fogdeep'),t:cv('--copper'),o:cv('--fog'),line:cv('--line'),sub:cv('--sub'),text:cv('--text')};
+function $(id){return document.getElementById(id)}
+function f2(v){return v==null?'—':v.toFixed(2)}
+function f1(v){return v==null?'—':v.toFixed(1)}
+function sg(v,d){if(v==null)return '—';var s=v.toFixed(d==null?2:d);return (v>0?'+':'')+s}
+function cls(v){return v==null||v==0?'':(v>0?'up':'down')}
+function md(s){return +s.slice(5,7)+'/'+ +s.slice(8,10)}
+function mlab(m){return +m.slice(5,7)+'月'}
+var M=D.months,DY=D.daily,R=D.reserves;
+var L=M[M.length-1];
+if(L){
+  var first=M[0];
+  $('mk').innerHTML='<div><small>外資持股比例</small><b>'+f1(L.total)+'<small>%</small></b></div>'+
+   '<div><small>台積電部分</small><b class="t">'+f1(L.tsmc)+'<small>%</small></b></div>'+
+   '<div><small>其他股票</small><b class="o">'+f1(L.other)+'<small>%</small></b></div>'+
+   '<div><small>外資持股市值</small><b>'+L.fval.toFixed(1)+'<small>兆</small></b></div>';
+  var lr=DY[DY.length-1],d0=DY[0];
+  $('lead').innerHTML='截至 '+md(lr[0])+'，外資持有上市股票市值的 <b>'+f1(lr[1])+'%</b>：台積電占 '+f1(lr[2])+'%、其他股票占 '+f1(lr[3])+'%。'+
+   '和今年第一個交易日（'+md(d0[0])+'，'+f1(d0[1])+'%）相比'+(lr[1]>=d0[1]?'增加':'減少')+' '+Math.abs(lr[1]-d0[1]).toFixed(1)+' 個百分點'+
+   '，其中台積電部分'+(lr[2]>=d0[2]?'增加':'減少')+' '+Math.abs(lr[2]-d0[2]).toFixed(1)+'、其他'+(lr[3]>=d0[3]?'增加':'減少')+' '+Math.abs(lr[3]-d0[3]).toFixed(1)+'。';
+}
+/* 每月橫條 */
+var mx=0;M.forEach(function(r){mx=Math.max(mx,r.total)});mx=Math.ceil(mx/10)*10||60;
+$('mbars').innerHTML=M.map(function(r){
+  return '<div class="mrow"><div class="ml">'+mlab(r.m)+'</div><div class="bar">'+
+   '<span class="bt" style="width:'+(r.tsmc/mx*100)+'%">台積 '+f1(r.tsmc)+'%</span>'+
+   '<span class="bo" style="width:'+(r.other/mx*100)+'%">其他 '+f1(r.other)+'%</span></div>'+
+   '<div class="mv">'+f1(r.total)+'%<small>'+md(r.d)+'</small></div></div>';
+}).join('');
+$('mtable').innerHTML='<tr><th>月份</th><th>總比例</th><th>台積電</th><th>其他</th><th>比上月</th><th>外資市值</th><th>台積電自己的外資比例</th></tr>'+
+ M.slice().reverse().map(function(r){return '<tr><td>'+r.m.replace('-','/')+'</td><td><b>'+f2(r.total)+'%</b></td><td class="t">'+f2(r.tsmc)+'%</td><td class="o">'+f2(r.other)+'%</td><td class="'+cls(r.chg)+'">'+sg(r.chg)+'</td><td>'+r.fval.toFixed(1)+' 兆</td><td>'+f2(r.tsmc_own)+'%</td></tr>'}).join('');
+
+/* 共用：SVG */
+function svg(w,h,inner){return '<svg viewBox="0 0 '+w+' '+h+'" xmlns="http://www.w3.org/2000/svg">'+inner+'</svg>'}
+function ticks(lo,hi,n){var st=(hi-lo)/n,p=Math.pow(10,Math.floor(Math.log10(st))),e=st/p;st=(e<1.5?1:e<3?2:e<7?5:10)*p;var a=[];for(var v=Math.ceil(lo/st)*st;v<=hi+1e-9;v+=st)a.push(+v.toFixed(6));return a}
+
+/* 每日圖 */
+var mode='line';
+function drawDaily(){
+  var box=$('dchart'),W=Math.max(320,box.clientWidth||640),H=Math.round(W<480?260:300),pl=34,pr=10,pt=10,pb=24;
+  var n=DY.length;if(!n)return;
+  var lo,hi;
+  if(mode=='line'){lo=1e9;hi=-1e9;DY.forEach(function(r){lo=Math.min(lo,r[2],r[3]);hi=Math.max(hi,r[1])});lo=Math.floor(lo-2);hi=Math.ceil(hi+2)}
+  else{lo=0;hi=0;DY.forEach(function(r){hi=Math.max(hi,r[1])});hi=Math.ceil(hi/10)*10}
+  var X=function(i){return pl+(n==1?0:(i/(n-1))*(W-pl-pr))},Y=function(v){return pt+(1-(v-lo)/(hi-lo))*(H-pt-pb)};
+  var g='';
+  ticks(lo,hi,5).forEach(function(v){g+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="'+C.line+'" stroke-dasharray="2 4"/><text x="'+(pl-6)+'" y="'+(Y(v)+4)+'" font-size="11" fill="'+C.sub+'" text-anchor="end">'+v+'%</text>'});
+  var lm='';DY.forEach(function(r,i){var m=r[0].slice(5,7);if(m!=lm){lm=m;g+='<line x1="'+X(i)+'" x2="'+X(i)+'" y1="'+pt+'" y2="'+(H-pb)+'" stroke="'+C.line+'" stroke-opacity=".5"/><text x="'+(X(i)+3)+'" y="'+(H-8)+'" font-size="11" fill="'+C.sub+'">'+(+m)+'月</text>'}});
+  if(mode=='line'){
+    [[3,C.o,2],[2,C.t,2],[1,C.tot,2.6]].forEach(function(s){
+      g+='<polyline fill="none" stroke="'+s[1]+'" stroke-width="'+s[2]+'" stroke-linejoin="round" points="'+DY.map(function(r,i){return X(i).toFixed(1)+','+Y(r[s[0]]).toFixed(1)}).join(' ')+'"/>';
+    });
+  }else{
+    var bw=Math.max(1,(W-pl-pr)/n-.6);
+    DY.forEach(function(r,i){var x=X(i)-bw/2;
+      g+='<rect x="'+x.toFixed(1)+'" width="'+bw.toFixed(2)+'" y="'+Y(r[2]).toFixed(1)+'" height="'+(Y(0)-Y(r[2])).toFixed(1)+'" fill="'+C.t+'"/>'+
+         '<rect x="'+x.toFixed(1)+'" width="'+bw.toFixed(2)+'" y="'+Y(r[1]).toFixed(1)+'" height="'+(Y(r[2])-Y(r[1])).toFixed(1)+'" fill="'+C.o+'"/>';
+    });
+  }
+  g+='<line class="cur" y1="'+pt+'" y2="'+(H-pb)+'" stroke="'+C.text+'" stroke-opacity=".45" visibility="hidden"/>';
+  box.innerHTML=svg(W,H,g)+'<div class="tip"></div>';
+  hover(box,n,X,W,function(i){var r=DY[i];return '<b>'+r[0].replace(/-/g,'/')+'</b><br>外資總比例 <span style="color:'+C.tot+'">'+f2(r[1])+'%</span><br>台積電 <span style="color:'+C.t+'">'+f2(r[2])+'%</span>　其他 <span style="color:'+C.o+'">'+f2(r[3])+'%</span>'+(r[4]?'<br>加權指數 '+r[4].toLocaleString('en-US',{maximumFractionDigits:0}):'')+(r[5]?'　匯率 '+r[5].toFixed(3):'')});
+}
+function hover(box,n,X,W,fn){
+  var sv=box.querySelector('svg'),tip=box.querySelector('.tip'),cur=sv.querySelector('.cur');
+  function mv(e){var rc=sv.getBoundingClientRect(),cx=((e.touches?e.touches[0].clientX:e.clientX)-rc.left)/rc.width*W;
+    var best=0,bd=1e9;for(var i=0;i<n;i++){var d=Math.abs(X(i)-cx);if(d<bd){bd=d;best=i}}
+    var x=X(best);cur.setAttribute('x1',x);cur.setAttribute('x2',x);cur.setAttribute('visibility','visible');
+    tip.innerHTML=fn(best);tip.style.display='block';var px=x/W*rc.width,tw=tip.offsetWidth;
+    tip.style.left=Math.max(0,Math.min(rc.width-tw,px-tw/2))+'px';}
+  function out(){tip.style.display='none';cur.setAttribute('visibility','hidden')}
+  sv.addEventListener('mousemove',mv);sv.addEventListener('touchstart',mv,{passive:true});sv.addEventListener('touchmove',mv,{passive:true});
+  sv.addEventListener('mouseleave',out);sv.addEventListener('touchend',function(){setTimeout(out,1800)});
+}
+[].forEach.call($('dmode').querySelectorAll('button'),function(b){b.onclick=function(){mode=b.dataset.m;[].forEach.call($('dmode').children,function(x){x.classList.toggle('on',x==b)});drawDaily()}});
+$('dcount').textContent=DY.length;
+$('dtable').innerHTML='<tr><th>日期</th><th>總比例</th><th>台積電</th><th>其他</th><th>比前日</th><th>加權指數</th><th>匯率</th></tr>'+
+ DY.map(function(r,i){var c=i?r[1]-DY[i-1][1]:null;return [r,c]}).reverse().map(function(a){var r=a[0],c=a[1];
+ return '<tr><td>'+r[0].slice(5).replace('-','/')+'</td><td><b>'+f2(r[1])+'%</b></td><td class="t">'+f2(r[2])+'%</td><td class="o">'+f2(r[3])+'%</td><td class="'+cls(c)+'">'+sg(c)+'</td><td>'+(r[4]?r[4].toLocaleString('en-US',{maximumFractionDigits:0}):'—')+'</td><td>'+(r[5]?r[5].toFixed(3):'—')+'</td></tr>'}).join('');
+
+/* 外匯存底＋匯率 */
+function drawRes(){
+  var box=$('rchart'),W=Math.max(320,box.clientWidth||640),H=W<480?240:280,pl=40,pr=40,pt=18,pb=24,n=R.length;if(!n){box.innerHTML='<p class="lead">外匯存底資料暫時抓不到，下次更新再試。</p>';return}
+  var lo=1e9,hi=-1e9,fl=1e9,fh=-1e9;R.forEach(function(r){lo=Math.min(lo,r.res);hi=Math.max(hi,r.res);if(r.fx_end){fl=Math.min(fl,r.fx_end);fh=Math.max(fh,r.fx_end)}});
+  var pad=(hi-lo)*.25||10;lo=Math.floor((lo-pad)/10)*10;hi=Math.ceil((hi+pad*.6)/10)*10;
+  if(fl>fh){fl=29;fh=34}var fp=(fh-fl)*.2||.5;fl-=fp;fh+=fp;
+  var bw=(W-pl-pr)/n,X=function(i){return pl+bw*(i+.5)},Y=function(v){return pt+(1-(v-lo)/(hi-lo))*(H-pt-pb)},F=function(v){return pt+(1-(v-fl)/(fh-fl))*(H-pt-pb)};
+  var g='';
+  ticks(lo,hi,4).forEach(function(v){g+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="'+C.line+'" stroke-dasharray="2 4"/><text x="'+(pl-5)+'" y="'+(Y(v)+4)+'" font-size="11" fill="'+C.sub+'" text-anchor="end">'+v+'</text>'});
+  ticks(fl,fh,4).forEach(function(v){g+='<text x="'+(W-pr+5)+'" y="'+(F(v)+4)+'" font-size="11" fill="'+C.t+'">'+v.toFixed(1)+'</text>'});
+  R.forEach(function(r,i){var x=X(i)-bw*.36;g+='<rect x="'+x.toFixed(1)+'" width="'+(bw*.72).toFixed(1)+'" y="'+Y(r.res).toFixed(1)+'" height="'+(Y(lo)-Y(r.res)).toFixed(1)+'" rx="3" fill="'+C.o+'" fill-opacity="'+(r.m>='2026'?1:.55)+'"/>';
+    if(i%(n>14?3:1)==0||i==n-1)g+='<text x="'+X(i)+'" y="'+(H-8)+'" font-size="10.5" fill="'+C.sub+'" text-anchor="middle">'+(r.m.slice(5)=='01'||i==0?r.m.slice(2,4)+'/':'')+(+r.m.slice(5))+'</text>';});
+  var lr=R[n-1];g+='<text x="'+X(n-1)+'" y="'+(Y(lr.res)-5)+'" font-size="11" fill="'+C.text+'" text-anchor="middle">'+lr.res.toFixed(0)+'</text>';
+  var pts=R.map(function(r,i){return r.fx_end?X(i).toFixed(1)+','+F(r.fx_end).toFixed(1):null}).filter(Boolean);
+  g+='<polyline fill="none" stroke="'+C.t+'" stroke-width="2.2" stroke-linejoin="round" points="'+pts.join(' ')+'"/>';
+  R.forEach(function(r,i){if(r.fx_end)g+='<circle cx="'+X(i)+'" cy="'+F(r.fx_end)+'" r="2.6" fill="'+C.t+'"/>'});
+  g+='<line class="cur" y1="'+pt+'" y2="'+(H-pb)+'" stroke="'+C.text+'" stroke-opacity=".35" visibility="hidden"/>';
+  box.innerHTML=svg(W,H,g)+'<div class="tip"></div>';
+  hover(box,n,X,W,function(i){var r=R[i];return '<b>'+r.m.replace('-','/')+' 月底</b><br>外匯存底 '+r.res.toFixed(2)+' 十億美元'+(r.chg!=null?'（'+sg(r.chg)+'）':'')+'<br>匯率 月底 '+(r.fx_end?r.fx_end.toFixed(3):'—')+'　月均 '+(r.fx_avg?r.fx_avg.toFixed(3):'—')});
+}
+$('rtable').innerHTML='<tr><th>月份</th><th>外匯存底</th><th>比上月</th><th>月底匯率</th><th>月平均匯率</th></tr>'+
+ R.slice().reverse().map(function(r){return '<tr><td>'+r.m.replace('-','/')+'</td><td><b>'+r.res.toFixed(2)+'</b> 十億美元</td><td class="'+cls(r.chg)+'">'+sg(r.chg)+'</td><td>'+(r.fx_end?r.fx_end.toFixed(3):'—')+'</td><td>'+(r.fx_avg?r.fx_avg.toFixed(3):'—')+'</td></tr>'}).join('');
+function all(){drawDaily();drawRes()}
+all();var rt;addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(all,200)});
+})();
+
+</script>
+</body>
+</html>
