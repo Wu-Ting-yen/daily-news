@@ -257,7 +257,14 @@ for y in (2001, 2002, 2003, 2004):
         per = v.get("per") or {}
         hit = sum(1 for c in per if c in px and close_on(c, ks[len(ks)//2]))
         print(y, "融資明細檔數", len(per), "有收盤", hit, "coll", v.get("coll"), "money", v.get("money"))
-c0 = next(iter(fund)); print("fund 範例", c0, json.dumps(fund[c0])[:600])
+for c0 in ("2330", "2317", "1101"):
+    fs = (fund.get(c0) or {}).get("fs") or []
+    for q, v in fs:
+        if q[:4] in ("2005", "2008", "2010", "2012", "2014") and q[5:7] == "06":
+            print("fund", c0, q, json.dumps(v, ensure_ascii=False)[:500])
+    print("rev", c0, len((fund.get(c0) or {}).get("rev") or []), ((fund.get(c0) or {}).get("rev") or [])[60:63])
+    for y in (2008, 2010):
+        d = day(f"{y}-06-30"); print(" known", y, len(known_q(c0, d)), rev_parts(c0, d), fwd_eps(c0, d))
 
 
 def why_not(d, mkt_dd):
