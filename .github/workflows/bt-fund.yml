@@ -4,7 +4,11 @@ on:
     inputs:
       px_run:
         description: "股價資料的 run id"
-        required: true
+        required: false
+        default: "44974846447"
+  push:
+    branches: [claude/project-thread-x3p1pk]
+    paths: [.github/workflows/bt-fund.yml, backtest/fetch_fund.py]
 permissions:
   actions: read
 jobs:
@@ -21,7 +25,7 @@ jobs:
         with:
           name: bt-px
           path: bt_raw
-          run-id: ${{ inputs.px_run }}
+          run-id: ${{ inputs.px_run || '44974846447' }}
           github-token: ${{ github.token }}
       - run: python backtest/fetch_fund.py ${{ matrix.part }} 8
         env:
