@@ -82,7 +82,10 @@ def twse(d):
                     taiex = taiex or num(r[1])
     coll = sum(n * 1000 * px[c] for c, n in per.items() if c in px)
     cov = sum(n for c, n in per.items() if c in px) / (sum(per.values()) or 1)
-    return {"sh": shares, "money": money * 1000 if money else None, "coll": round(coll), "cov": round(cov, 3), "taiex": taiex, "n": len(per)}
+    out = {"sh": shares, "money": money * 1000 if money else None, "coll": round(coll), "cov": round(cov, 3), "taiex": taiex, "n": len(per)}
+    if not px:  # 2004/2 以前證交所沒有全部個股收盤價，先存各檔融資張數，之後用其他股價補算
+        out["per"] = per
+    return out
 
 
 def tpex(d):
@@ -130,7 +133,7 @@ def main(a, b):
         if d.weekday() < 5 and k not in cache[y]:
             t = twse(d)
             if t:
-                o = tpex(d) if d.year >= 2007 else None
+                o = tpex(d)
                 cache[y][k] = {"tw": t, "otc": o}
                 print(k, "上市融資", t["sh"], "金額", t["money"], "擔保", t["coll"], "維持率≈",
                       round(t["coll"] / t["money"] * 100, 1) if t["money"] else None, "cov", t["cov"],

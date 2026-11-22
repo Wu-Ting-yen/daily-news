@@ -1,0 +1,44 @@
+name: 回測資料：融資歷史
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/project-thread-x3p1pk]
+    paths: [.github/workflows/bt-margin.yml]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 13
+      matrix:
+        y: [2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026]
+    steps:
+      - uses: actions/checkout@v4
+      - run: python backtest/margin_hist.py ${{ matrix.y }}-01-01 ${{ matrix.y }}-12-31
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: margin-${{ matrix.y }}
+          path: data/bt/margin/${{ matrix.y }}.json
+  save:
+    needs: fetch
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - run: |
+          mkdir -p data/bt/margin
+          cp art/*/*.json data/bt/margin/ || true
+          ls -la data/bt/margin
+          git config user.name "news-bot"
+          git config user.email "news-bot@users.noreply.github.com"
+          git add data/bt/margin
+          git diff --cached --quiet && exit 0
+          git commit -m "回測資料：融資歷史"
+          for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; git rebase --abort 2>/dev/null; sleep 5; done
