@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [claude/project-thread-x3p1pk]
-    paths: [.github/workflows/bt-data.yml, backtest/fetch_px.py, backtest/fetch_fund.py]
+    paths: [.github/workflows/bt-data.yml, backtest/fetch_px.py]
 jobs:
   px:
     runs-on: ubuntu-latest

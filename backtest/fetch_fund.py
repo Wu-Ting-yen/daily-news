@@ -17,11 +17,18 @@ def fm(ds, c):
         except Exception as e:
             print(" err", c, e, flush=True); time.sleep(30 * (i + 1))
     return []
+# 拆解預估 EPS 要用的科目
+KEEP = {"Revenue", "GrossProfit", "OperatingExpenses", "OperatingIncome", "TotalNonoperatingIncomeAndExpense",
+        "PreTaxIncome", "IncomeTaxExpense", "TAX", "IncomeAfterTaxes", "EquityAttributableToOwnersOfParent", "EPS"}
 out = {}
 for i, c in enumerate(uni):
-    eps = [[x["date"], x["value"]] for x in fm("TaiwanStockFinancialStatements", c) if x["type"] == "EPS"]
+    fs = {}
+    for x in fm("TaiwanStockFinancialStatements", c):
+        if x["type"] in KEEP:
+            fs.setdefault(x["date"], {})[x["type"]] = x["value"]
+    eps = [[d, v] for d, v in sorted(fs.items())]
     rev = [[x["revenue_year"], x["revenue_month"], x["revenue"]] for x in fm("TaiwanStockMonthRevenue", c)]
-    out[c] = {"eps": eps, "rev": rev}
+    out[c] = {"fs": eps, "rev": rev}
     if i % 20 == 0: print(part, i, c, len(eps), len(rev), flush=True)
     time.sleep(12.5 if not tok else 1)
 os.makedirs("bt_raw", exist_ok=True)
