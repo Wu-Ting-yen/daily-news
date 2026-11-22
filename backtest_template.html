@@ -189,7 +189,7 @@ $('rulebox').innerHTML='<p><b>① 什麼時候算流動性風險</b><br>指數�
  '<div class="warn">限制：① 證交所的追繳戶數、強制處分金額只查得到最近幾個月，20 多年的回測只能用「維持率 + 融資急減 + 指數大跌」代替；最近的官方數字放在上面「現在的訊號」。② 維持率是用每檔融資張數 × 收盤價 ÷ 融資金額自己估的，和新聞上券商估的數字會有一點差距。③ 已經下市的股票抓不到，結果會比實際好一點。④ 預估本益比用營收成長推估，不是分析師預估。</div>';
 /* 每一次 */
 $('epbox').innerHTML=B.episodes.slice().reverse().map(function(e){
-  if(!e.entry)return '<div class="ep"><h3>'+ymd(e.stress)+' 風險開始<span style="color:var(--sub);font-size:14px">沒有進場</span></h3><div class="tl">'+e.note+'</div></div>';
+  if(!e.entry)return '<div class="ep"><h3>'+ymd(e.stress)+' 風險開始<span style="color:var(--sub);font-size:14px">'+(e.live?'進行中':'沒有進場')+'</span></h3><div class="tl">'+e.note+'</div></div>';
   var rows=(e.trades||[]).map(function(t){return '<tr><td>'+t.c+' '+t.name+'</td><td>'+t.dd+'%</td><td>'+t.pe+' / '+t.med+'</td><td>'+t.eps+'</td><td>'+t.gm+'%</td><td>'+t.g+'%</td><td>'+ymd(t.sell).slice(2)+'</td><td class="'+(t.ret>0?'up':'down')+'"><b>'+sg(t.ret)+'</b></td></tr>'}).join('');
   return '<div class="ep"><h3>'+ymd(e.entry)+' 進場<span class="'+(e.port>0?'up':'down')+'">'+sg(e.port)+'</span></h3>'+
    '<div class="tl">風險開始 <b>'+ymd(e.stress)+'</b>（融資 10 日 '+f1(e.m10)+'%'+(e.low_mr?'，維持率最低 '+f1(e.low_mr)+'%':'，這時期沒有維持率資料')+'，指數最低 '+e.low_ix.toLocaleString()+'）→ 進場 <b>'+ymd(e.entry)+'</b>（指數 '+e.entry_ix.toLocaleString()+(e.entry_mr?'，維持率 '+f1(e.entry_mr)+'%':'')+'）'+(e.second?'→ 加碼 <b>'+ymd(e.second)+'</b>':'')+' → 出場 <b>'+ymd(e.exit)+'</b>：'+e.why+'。<br>同期間加權指數 '+sg(e.bench)+'；選到 '+(e.trades||[]).length+' 檔'+(e.ix_slots?'，另外 '+e.ix_slots+' 個空名額買大盤（報酬 '+sg(e.ix_ret)+'）':'')+'。</div>'+

@@ -330,7 +330,9 @@ while i < N:
             break
         j += 1
     if entry is None:
-        episodes.append(dict(stress=iso(S[st0]["d"]), entry=None, note="等不到流動性轉好的訊號"))
+        live = j >= N
+        episodes.append(dict(stress=iso(S[st0]["d"]), entry=None, live=live,
+                             note="風險還在進行中，正在等融資止跌、維持率回升的進場訊號" if live else "等了 60 個交易日都沒有出現流動性轉好的訊號，這次不進場"))
         i = j + 1
         continue
     e = S[entry]
