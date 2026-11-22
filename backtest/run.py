@@ -1,0 +1,443 @@
+#!/usr/bin/env python3
+"""融資流動性進出場回測（2001 至今）→ data/bt/result.json
+
+需要：data/bt/margin/*.json、bt_raw/px.json.gz、bt_raw/meta.json、bt_raw/fund_*.json、
+      bt_raw/taiex.json、bt_raw/inst.json（fetch_market.py）
+規則都寫在 RULES，頁面會照這裡的數字說明。
+"""
+import bisect, glob, gzip, json, os, statistics as st, datetime as dt
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW = os.path.join(ROOT, "bt_raw")
+
+RULES = dict(
+    dd_line=-10.0,        # 指數從 60 日高點跌超過 10%
+    margin_drop=-8.0,     # 上市融資金額 10 日減少超過 8%
+    mr_line=145.0,        # 估算維持率低於 145%
+    calm_3d=-1.0,         # 進場：融資 3 日減幅縮小到 1% 以內
+    mr_rebound=5.0,       # 進場：維持率比低點回升 5 個百分點
+    stress_wait=60,       # 風險出現後最多等 60 個交易日
+    picks=10,             # 選 10 檔，每檔 10%
+    first=0.5,            # 第一批 50%
+    second_days=40,       # 40 個交易日內站回 20 日線再投第二批
+    fell_more=5.0,        # 個股比大盤多跌 5 個百分點以上
+    cheap=0.85,           # 預估本益比 ≤ 自己 5 年中位數 × 0.85 才買
+    fair=1.0,             # 回到 5 年中位數 = 合理價 → 出場
+    heat_mr=170.0,        # 維持率 > 170% …
+    stop=-10.0,           # 指數比恐慌低點再跌 10% → 停損
+    max_days=500,         # 最多持有約 2 年
+    cost=0.585,           # 手續費＋證交稅 來回 %
+)
+R = RULES
+D0 = dt.date(1970, 1, 1)
+
+
+def day(s):
+    return (dt.date.fromisoformat(s) - D0).days
+
+
+def iso(n):
+    return (D0 + dt.timedelta(days=n)).isoformat()
+
+
+# ---------- 讀資料 ----------
+px = json.load(gzip.open(os.path.join(RAW, "px.json.gz"), "rt"))
+meta = json.load(open(os.path.join(RAW, "meta.json"), encoding="utf-8"))
+fund = {}
+for p in glob.glob(os.path.join(RAW, "fund_*.json")):
+    fund.update(json.load(open(p)))
+taiex = {day(k): v for k, v in json.load(open(os.path.join(RAW, "taiex.json"))).items()}
+inst = {day(k): v for k, v in json.load(open(os.path.join(RAW, "inst.json"))).items()}
+try:
+    official = json.load(open(os.path.join(ROOT, "data", "bt", "official.json")))
+except Exception:
+    official = {}
+margin = {}
+for p in sorted(glob.glob(os.path.join(ROOT, "data", "bt", "margin", "*.json"))):
+    for k, v in json.load(open(p)).items():
+        margin[day(k)] = v
+
+
+def close_on(c, d, adj=False):
+    D = px[c][0]
+    k = bisect.bisect_right(D, d)
+    if k == 0 or D[k - 1] < d - 10:
+        return None
+    return px[c][1 if adj else 2][k - 1]
+
+
+# 2004/2 以前沒有全部收盤價：用 Yahoo 收盤補擔保品市值
+for d, v in margin.items():
+    tw = v.get("tw") or {}
+    per = tw.get("per")
+    if per and tw.get("money"):
+        coll = 0.0
+        for c, n in per.items():
+            p = close_on(c, d) if c in px else None
+            if p:
+                coll += n * 1000 * p
+        tw["coll"] = coll
+
+days = sorted(d for d in margin if d in taiex or (margin[d].get("tw") or {}).get("taiex"))
+S = []  # 每日市場序列
+for d in days:
+    tw = margin[d]["tw"]
+    otc = margin[d].get("otc") or {}
+    ix = taiex.get(d) or tw.get("taiex")
+    mr = tw["coll"] / tw["money"] * 100 if tw.get("money") and tw.get("coll") else None
+    if d < day("2004-02-11"):
+        mr = None  # 2004/2 以前證交所沒有全部個股收盤價，估出來的維持率不可靠，不用
+    S.append(dict(d=d, ix=ix, money=tw.get("money"), sh=tw.get("sh"), otc=otc.get("sh"), mr=mr, fi=inst.get(d)))
+for i, s in enumerate(S):
+    w60 = [x["ix"] for x in S[max(0, i - 59):i + 1]]
+    s["dd"] = (s["ix"] / max(w60) - 1) * 100
+    s["ma5"] = sum(x["ix"] for x in S[max(0, i - 4):i + 1]) / min(5, i + 1)
+    s["ma20"] = sum(x["ix"] for x in S[max(0, i - 19):i + 1]) / min(20, i + 1)
+    s["m10"] = (s["money"] / S[i - 10]["money"] - 1) * 100 if i >= 10 and S[i - 10]["money"] else None
+    s["m3"] = (s["money"] / S[i - 3]["money"] - 1) * 100 if i >= 3 and S[i - 3]["money"] else None
+    s["o10"] = (s["otc"] / S[i - 10]["otc"] - 1) * 100 if i >= 10 and s["otc"] and S[i - 10]["otc"] else None
+    f3 = [x["fi"] for x in S[max(0, i - 2):i + 1] if x["fi"] is not None]
+    s["f3"] = sum(f3) if len(f3) == 3 else None
+
+
+# ---------- 個股：預估本益比 ----------
+def known_q(c, d):
+    """d 這天之前已公布的季報（Q1–Q3 季末後 45 天、Q4 後 90 天）"""
+    out = []
+    for q, v in (fund.get(c) or {}).get("fs") or []:
+        lag = 90 if q[5:7] == "12" else 45
+        if day(q) + lag <= d:
+            out.append(v)
+    return out
+
+
+def rev_parts(c, d):
+    """近 12 個月營收、近 3 個月營收年增率（月營收次月 10 日公布）"""
+    rv = (fund.get(c) or {}).get("rev") or []
+    t = D0 + dt.timedelta(days=d)
+    m = {}
+    for y, mo, v in rv:
+        if dt.date(y + (mo == 12), mo % 12 + 1, 10) <= t:
+            m[(y, mo)] = v
+    if len(m) < 15:
+        return None, None
+    ks = sorted(m)
+    r12 = sum(m[k] for k in ks[-12:])
+    now = sum(m[k] for k in ks[-3:])
+    prev = sum(m.get((k[0] - 1, k[1]), 0) for k in ks[-3:])
+    return r12, (now / prev - 1 if prev > 0 else None)
+
+
+def fwd_eps(c, d):
+    """照 sky 的拆解：
+    1. 預估未來 4 季營收 = 近 12 個月營收 ×（1＋近 3 個月營收年增率，限 −30%～+50%）
+    2. × 近 4 季毛利率 − 近 4 季營業費用率 → 預估營業利益；＋近 4 季業外損益；×（1−近 4 季有效稅率）→ 預估稅後淨利（只算歸屬母公司的比例）
+    3. ÷ 最新一季流通股數（母公司淨利 ÷ EPS）→ 預估 EPS"""
+    q = known_q(c, d)[-4:]
+    if len(q) < 4:
+        return None
+    r12, g = rev_parts(c, d)
+    if not r12 or g is None:
+        return None
+    def S(k):
+        v = [x.get(k) for x in q]
+        return sum(v) if all(x is not None for x in v) else None
+    rev, gp, opx, oi = S("Revenue"), S("GrossProfit"), S("OperatingExpenses"), S("OperatingIncome")
+    nonop, pre = S("TotalNonoperatingIncomeAndExpense"), S("PreTaxIncome")
+    tax = S("IncomeTaxExpense") if S("IncomeTaxExpense") is not None else S("TAX")
+    ni, par = S("IncomeAfterTaxes"), S("EquityAttributableToOwnersOfParent")
+    if not rev or rev <= 0:
+        return None
+    shares = None
+    for x in reversed(q):  # 股數 = 母公司淨利 ÷ EPS（舊財報沒有母公司淨利，就用 稅前−所得稅）
+        e = x.get("EPS")
+        n = x.get("EquityAttributableToOwnersOfParent")
+        if n is None:
+            n = x.get("IncomeAfterTaxes")
+        if n is None and x.get("PreTaxIncome") is not None:
+            n = x["PreTaxIncome"] - (x.get("IncomeTaxExpense") if x.get("IncomeTaxExpense") is not None else (x.get("TAX") or 0))
+        if e and n and abs(e) >= 0.1 and n / e > 0:
+            shares = n / e
+            break
+    if not shares:
+        # 2006–2012 舊財報缺稅前淨利、母公司淨利，算不出股數：改用 近四季 EPS ×（1＋營收成長）
+        eps4 = [x.get("EPS") for x in q]
+        if any(e is None for e in eps4) or sum(eps4) <= 0:
+            return None
+        gg = min(max(g, -0.3), 0.5)
+        gm0 = gp / rev if gp is not None else None
+        op0 = opx / rev if opx is not None else None
+        return dict(eps=sum(eps4) * (1 + gg), g=g, gm=gm0 if gm0 is not None else 0.0,
+                    opr=op0 if op0 is not None else 0.0, trate=None, frev=r12 * (1 + gg), simple=True)
+    gm = gp / rev if gp is not None else None
+    opr = opx / rev if opx is not None else (gm - oi / rev if gm is not None and oi is not None else None)
+    if gm is None or opr is None:
+        if oi is None:
+            return None
+        gm, opr = oi / rev, 0.0
+    if nonop is None:
+        nonop = (pre - oi) if pre is not None and oi is not None else 0.0
+    trate = min(max(abs(tax) / pre, 0.0), 0.4) if tax is not None and pre and pre > 0 else 0.2
+    own = min(max(par / ni, 0.0), 1.0) if par is not None and ni and ni > 0 else 1.0
+    frev = r12 * (1 + min(max(g, -0.3), 0.5))
+    fop = frev * (gm - opr)
+    fni = (fop + nonop) * (1 - trate) * own
+    return dict(eps=fni / shares, g=g, gm=gm, opr=opr, trate=trate, frev=frev)
+
+
+def fwd_pe(c, d):
+    p = close_on(c, d)
+    f = fwd_eps(c, d)
+    if not p or not f or f["eps"] <= 0:
+        return None, (f["eps"] if f else None), (f["g"] if f else None)
+    return p / f["eps"], f["eps"], f["g"]
+
+
+_med = {}
+
+
+def pe_median(c, d):
+    """過去 5 年每月底的預估本益比中位數"""
+    key = (c, d // 30)
+    if key in _med:
+        return _med[key]
+    vals = []
+    for k in range(1, 61):
+        x = fwd_pe(c, d - 30 * k)[0]
+        if x and 0 < x < 200:
+            vals.append(x)
+    _med[key] = st.median(vals) if len(vals) >= 24 else None
+    return _med[key]
+
+
+def liquid(d, n=300):
+    sc = []
+    for c, (D, A, C, V) in px.items():
+        k = bisect.bisect_right(D, d)
+        if k < 60 or D[k - 1] < d - 10:
+            continue
+        sc.append((sum(V[k - 60:k]) / 60, c))
+    sc.sort(reverse=True)
+    return [c for _, c in sc[:n]]
+
+
+def pick(d, mkt_dd):
+    out = []
+    for c in liquid(d):
+        if c not in fund:
+            continue
+        D, A, C, V = px[c]
+        k = bisect.bisect_right(D, d)
+        hi = max(C[max(0, k - 60):k])
+        sdd = (C[k - 1] / hi - 1) * 100
+        if sdd > mkt_dd - R["fell_more"]:
+            continue
+        pe, e, g = fwd_pe(c, d)
+        if not pe or g is None or g <= 0 or sum(x.get("EPS") or 0 for x in known_q(c, d)[-4:]) <= 0:
+            continue
+        med = pe_median(c, d)
+        if not med:
+            continue
+        ratio = pe / med
+        if ratio > R["cheap"]:
+            continue
+        out.append(dict(c=c, name=meta[c][1], ind=meta[c][2], dd=round(sdd, 1), pe=round(pe, 1), med=round(med, 1),
+                        ratio=round(ratio, 2), eps=round(e, 2), g=round(g * 100, 1), p=C[k - 1],
+                        gm=round(fwd_eps(c, d)["gm"] * 100, 1), opm=round((fwd_eps(c, d)["gm"] - fwd_eps(c, d)["opr"]) * 100, 1)))
+    out.sort(key=lambda x: x["ratio"])
+    return out[:R["picks"]]
+
+
+
+# ---------- 檢查資料 ----------
+print("fund 檔數", len(fund), "px 檔數", len(px))
+for y in (2002, 2004, 2006, 2008, 2010, 2012, 2015, 2018, 2022, 2026):
+    d = day(f"{y}-06-30")
+    nq = sum(1 for c in fund if len(known_q(c, d)) >= 4)
+    nr = sum(1 for c in fund if rev_parts(c, d)[0])
+    nf = sum(1 for c in list(fund)[:400] if fwd_eps(c, d))
+    lq = liquid(d)
+    print(y, "有4季財報", nq, "有營收", nr, "前400檔能算EPS", nf, "流動性前300有財報", sum(1 for c in lq if c in fund))
+for y in (2001, 2002, 2003, 2004):
+    ks = [d for d in margin if iso(d).startswith(str(y))]
+    if ks:
+        v = margin[ks[len(ks)//2]]["tw"]
+        per = v.get("per") or {}
+        hit = sum(1 for c in per if c in px and close_on(c, ks[len(ks)//2]))
+        print(y, "融資明細檔數", len(per), "有收盤", hit, "coll", v.get("coll"), "money", v.get("money"))
+for c0 in ("2330", "2317", "1101"):
+    fs = (fund.get(c0) or {}).get("fs") or []
+    for q, v in fs:
+        if q[:4] in ("2005", "2008", "2010", "2012", "2014") and q[5:7] == "06":
+            print("fund", c0, q, json.dumps(v, ensure_ascii=False)[:500])
+    print("rev", c0, len((fund.get(c0) or {}).get("rev") or []), ((fund.get(c0) or {}).get("rev") or [])[60:63])
+    for y in (2008, 2010):
+        d = day(f"{y}-06-30"); print(" known", y, len(known_q(c0, d)), rev_parts(c0, d), fwd_eps(c0, d))
+
+
+def why_not(d, mkt_dd):
+    cnt = dict(liquid=0, has_fund=0, fell=0, pe=0, med=0, cheap=0)
+    for c in liquid(d):
+        cnt["liquid"] += 1
+        if c not in fund: continue
+        cnt["has_fund"] += 1
+        D, A, C, V = px[c]; k = bisect.bisect_right(D, d)
+        if (C[k - 1] / max(C[max(0, k - 60):k]) - 1) * 100 > mkt_dd - R["fell_more"]: continue
+        cnt["fell"] += 1
+        pe, e, g = fwd_pe(c, d)
+        if not pe or g is None or g <= 0: continue
+        cnt["pe"] += 1
+        med = pe_median(c, d)
+        if not med: continue
+        cnt["med"] += 1
+        if pe / med <= R["cheap"]: cnt["cheap"] += 1
+    return cnt
+
+# ---------- 回測 ----------
+def stress(x):
+    """流動性風險：指數跌 10%＋融資 10 日減 8%＋維持率 <145%（2004/2 以前沒有維持率，只看前兩項）"""
+    return (x["dd"] <= R["dd_line"] and x["m10"] is not None and x["m10"] <= R["margin_drop"]
+            and (x["mr"] is None or x["mr"] <= R["mr_line"]))
+
+
+episodes = []
+i, N = 0, len(S)
+while i < N:
+    s = S[i]
+    if not stress(s):
+        i += 1
+        continue
+    st0 = i
+    pre_money = S[max(0, i - 20)]["money"]
+    low_mr, low_ix = s["mr"], s["ix"]
+    if low_mr is None:
+        low_mr = 0
+    entry = None
+    j = i
+    last_stress = i
+    while j < N and j - last_stress <= R["stress_wait"]:
+        x = S[j]
+        if x["mr"]:
+            low_mr = min(low_mr, x["mr"]) if low_mr else x["mr"]
+        low_ix = min(low_ix, x["ix"])
+        if stress(x):
+            last_stress = j
+        mr_ok = (x["mr"] >= low_mr + R["mr_rebound"]) if (x["mr"] and low_mr) else x["mr"] is None
+        ok = (x["m3"] is not None and x["m3"] > R["calm_3d"] and mr_ok
+              and x["ix"] > x["ma5"] and (x["f3"] is None or x["f3"] > 0))
+        if ok and j > st0:
+            entry = j
+            break
+        j += 1
+    if entry is None:
+        live = j >= N
+        episodes.append(dict(stress=iso(S[st0]["d"]), entry=None, live=live,
+                             note="風險還在進行中，正在等融資止跌、維持率回升的進場訊號" if live else "等了 60 個交易日都沒有出現流動性轉好的訊號，這次不進場"))
+        i = j + 1
+        continue
+    e = S[entry]
+    picks = pick(e["d"], S[entry]["dd"])
+    print("進場", iso(e["d"]), "篩選", why_not(e["d"], S[entry]["dd"]))
+    # 第二批
+    second = None
+    for k in range(entry + 1, min(N, entry + R["second_days"])):
+        if S[k]["ix"] > S[k]["ma20"]:
+            second = k
+            break
+    # 出場：大盤
+    mexit, why = None, None
+    for k in range(entry + 1, N):
+        x = S[k]
+        if x["ix"] <= low_ix * (1 + R["stop"] / 100):
+            mexit, why = k, "停損：指數比恐慌低點再跌 10%"
+            break
+        if x["mr"] and x["mr"] >= R["heat_mr"] and x["money"] >= pre_money:
+            mexit, why = k, "升溫：維持率 >170% 且融資回到崩跌前"
+            break
+        if S[k]["d"] - e["d"] >= R["max_days"] * 7 / 5:
+            mexit, why = k, "持有滿 2 年"
+            break
+    if mexit is None:
+        mexit, why = N - 1, "仍持有中（算到最新一天）"
+    # 個股
+    trades = []
+    for p in picks:
+        c = p["c"]
+        buys = [(entry, R["first"])] + ([(second, 1 - R["first"])] if second and second < mexit else [])
+        out_k, out_why = mexit, why
+        for k in range(entry + 5, mexit + 1, 5):
+            pe = fwd_pe(c, S[k]["d"])[0]
+            med = pe_median(c, S[k]["d"])
+            if pe and med and pe / med >= R["fair"]:
+                out_k, out_why = k, "回到合理本益比（5 年中位數）"
+                break
+        sell = close_on(c, S[out_k]["d"], adj=True)
+        legs = []
+        for bk, w in buys:
+            if bk > out_k:
+                continue
+            b = close_on(c, S[bk]["d"], adj=True)
+            if b and sell:
+                legs.append((w, (sell / b - 1) * 100 - R["cost"]))
+        if not legs:
+            continue
+        wsum = sum(w for w, _ in legs)
+        ret = sum(w * r for w, r in legs) / wsum
+        trades.append(dict(p, buy=iso(S[entry]["d"]), add=iso(S[second]["d"]) if second and second <= out_k else None,
+                           sell=iso(S[out_k]["d"]), why=out_why, ret=round(ret, 1), w=wsum))
+    # 投組報酬：每檔 10%，沒用到的資金放現金
+    bench = (S[mexit]["ix"] / e["ix"] - 1) * 100
+    # 選不滿 10 檔：空的名額照同樣的分批和大盤出場時間買大盤（等同 0050）
+    empty = R["picks"] - len(trades)
+    ix_ret = None
+    if empty > 0:
+        legs = [(R["first"], (S[mexit]["ix"] / e["ix"] - 1) * 100 - R["cost"])]
+        if second and second < mexit:
+            legs.append((1 - R["first"], (S[mexit]["ix"] / S[second]["ix"] - 1) * 100 - R["cost"]))
+        wsum = sum(w for w, _ in legs)
+        ix_ret = sum(w * r for w, r in legs) / wsum
+    port = sum(t["ret"] * t["w"] * (1 / R["picks"]) for t in trades) + (ix_ret * wsum * empty / R["picks"] if empty > 0 else 0)
+    episodes.append(dict(stress=iso(S[st0]["d"]), entry=iso(e["d"]), second=iso(S[second]["d"]) if second and second < mexit else None,
+                         exit=iso(S[mexit]["d"]), why=why, low_mr=round(low_mr, 1) if low_mr else None, entry_mr=round(e["mr"], 1) if e["mr"] else None,
+                         entry_ix=round(e["ix"]), low_ix=round(low_ix), dd=round(S[entry]["dd"], 1),
+                         m10=round(S[st0]["m10"], 1), trades=trades, port=round(port, 1), bench=round(bench, 1),
+                         ix_slots=empty, ix_ret=round(ix_ret, 1) if ix_ret is not None else None))
+    i = mexit + 1
+
+# 權益曲線（只在每次事件結束時結算，其餘時間現金）
+eq, curve = 100.0, []
+for ep in episodes:
+    if ep.get("entry"):
+        eq *= 1 + ep["port"] / 100
+        curve.append([ep["exit"], round(eq, 1)])
+ix0, ix1 = S[0]["ix"], S[-1]["ix"]
+summary = dict(start=iso(S[0]["d"]), end=iso(S[-1]["d"]), n=len([e for e in episodes if e.get("entry")]),
+               equity=round(eq, 1), bench=round(ix1 / ix0 * 100, 1),
+               win=sum(1 for e in episodes if e.get("entry") and e["port"] > 0))
+series = [[iso(s["d"]), round(s["ix"]), round(s["mr"], 1) if s["mr"] else None, round(s["money"] / 1e8) if s["money"] else None] for s in S[::3]]
+# 外資賣超 vs 指數：每週（5 個交易日）外資買賣超合計 對 指數漲跌
+def beta(pairs):
+    if len(pairs) < 20:
+        return None
+    xs, ys = [a for a, _ in pairs], [b for _, b in pairs]
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    vx = sum((x - mx) ** 2 for x in xs)
+    cov = sum((x - mx) * (y - my) for x, y in pairs)
+    vy = sum((y - my) ** 2 for y in ys)
+    return dict(per1000=round(cov / vx * 1000, 2), r2=round(cov * cov / (vx * vy), 2), n=len(pairs))
+wk = []
+for i in range(0, len(S) - 5, 5):
+    f = [x["fi"] for x in S[i + 1:i + 6]]
+    if all(v is not None for v in f):
+        wk.append((sum(f), (S[i + 5]["ix"] / S[i]["ix"] - 1) * 100, S[i]["dd"]))
+flow = dict(all=beta([(a, b) for a, b, _ in wk]), calm=beta([(a, b) for a, b, d in wk if d > -10]),
+            panic=beta([(a, b) for a, b, d in wk if d <= -10]))
+print("外資", flow)
+os.makedirs(os.path.join(ROOT, "data", "bt"), exist_ok=True)
+json.dump(dict(rules=RULES, summary=summary, flow=flow, episodes=episodes, curve=curve, series=series,
+               now=dict(d=iso(S[-1]["d"]), ix=S[-1]["ix"], mr=S[-1]["mr"], m10=S[-1]["m10"], dd=S[-1]["dd"], m3=S[-1]["m3"]),
+                official=[[k] + [v.get(x) for x in ("keepRate", "callAccNum", "callAmt", "exeAccNum", "exeAmt")] for k, v in sorted(official.items())][-120:]),
+          open(os.path.join(ROOT, "data", "bt", "result.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+print(json.dumps(summary, ensure_ascii=False))
+for e in episodes:
+    print(e.get("stress"), e.get("entry"), e.get("exit"), e.get("why"), e.get("port"), e.get("bench"), len(e.get("trades") or []))

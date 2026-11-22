@@ -1,0 +1,40 @@
+name: 回測資料：股價與財報
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/project-thread-x3p1pk]
+    paths: [.github/workflows/bt-data.yml, backtest/fetch_px.py]
+jobs:
+  px:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - run: python backtest/fetch_px.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bt-px
+          path: bt_raw/
+          retention-days: 90
+  fund:
+    needs: px
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bt-px
+          path: bt_raw
+      - run: python backtest/fetch_fund.py ${{ matrix.part }} 8
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bt-fund-${{ matrix.part }}
+          path: bt_raw/fund_${{ matrix.part }}.json
+          retention-days: 90

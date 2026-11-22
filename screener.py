@@ -1085,7 +1085,7 @@ def render(stocks, mkt, updated, inst_days, sig=(), opt=None):
         "others": "基本面好壞參半，或基本面不錯但跌得還不多（抗跌）。",
     }
     names = {"oversold": "可能錯殺", "pricey": "跌深・不便宜", "weak": "基本面轉弱", "others": "其他"}
-    nav = '<a class="navlink back" href="./">← 新聞</a><a class="navlink" href="foreign.html">外資持股</a><button data-tab="overview">總覽</button>'
+    nav = '<a class="navlink back" href="./">← 新聞</a><a class="navlink" href="foreign.html">外資持股</a><a class="navlink" href="backtest.html">流動性回測</a><button data-tab="overview">總覽</button>'
     nav += "".join(f'<button data-tab="{k}">{names[k]}<b>{len(v)}</b></button>' for k, v in groups.items())
     nav += f'<button data-tab="signals">訊號紀錄<b>{len(sig)}</b></button><button data-tab="how">怎麼判斷</button>'
     body = overview(stocks, groups, mkt, opt)

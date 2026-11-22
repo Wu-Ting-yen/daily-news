@@ -1,0 +1,37 @@
+name: 回測資料：財報
+on:
+  workflow_dispatch:
+    inputs:
+      px_run:
+        description: "股價資料的 run id"
+        required: false
+        default: "44974846447"
+  push:
+    branches: [claude/project-thread-x3p1pk]
+    paths: [.github/workflows/bt-fund.yml, backtest/fetch_fund.py]
+permissions:
+  actions: read
+jobs:
+  fund:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bt-px
+          path: bt_raw
+          run-id: ${{ inputs.px_run || '44974846447' }}
+          github-token: ${{ github.token }}
+      - run: python backtest/fetch_fund.py ${{ matrix.part }} 8
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bt-fund-${{ matrix.part }}
+          path: bt_raw/fund_${{ matrix.part }}.json
+          retention-days: 90
