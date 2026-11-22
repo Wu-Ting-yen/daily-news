@@ -160,7 +160,15 @@ def fwd_eps(c, d):
             shares = n / e
             break
     if not shares:
-        return None
+        # 2006–2012 舊財報缺稅前淨利、母公司淨利，算不出股數：改用 近四季 EPS ×（1＋營收成長）
+        eps4 = [x.get("EPS") for x in q]
+        if any(e is None for e in eps4) or sum(eps4) <= 0:
+            return None
+        gg = min(max(g, -0.3), 0.5)
+        gm0 = gp / rev if gp is not None else None
+        op0 = opx / rev if opx is not None else None
+        return dict(eps=sum(eps4) * (1 + gg), g=g, gm=gm0 if gm0 is not None else 0.0,
+                    opr=op0 if op0 is not None else 0.0, trate=None, frev=r12 * (1 + gg), simple=True)
     gm = gp / rev if gp is not None else None
     opr = opx / rev if opx is not None else (gm - oi / rev if gm is not None and oi is not None else None)
     if gm is None or opr is None:
