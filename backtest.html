@@ -160,7 +160,7 @@ var R=B.rules,S=B.summary,E=B.episodes.filter(function(e){return e.entry});
 $('mk').innerHTML='<div><small>回測期間</small><b>'+S.start.slice(0,4)+'–'+S.end.slice(2,4)+'</b></div><div><small>進場次數</small><b>'+S.n+'<small>次</small></b></div>'+
  '<div><small>賺錢的次數</small><b>'+S.win+'<small>/'+S.n+'</small></b></div><div><small>100 元變成</small><b>'+Math.round(S.equity)+'<small>元</small></b></div>';
 $('lead').innerHTML='從 '+ymd(S.start)+' 到 '+ymd(S.end)+'，照固定規則只在「融資斷頭潮過後、流動性轉好」時進場，一共進場 '+S.n+' 次，其中 '+S.win+' 次賺錢。'+
- '每次只投入 10 檔×10%，其餘時間放現金：一開始的 100 元最後變成 <b>'+Math.round(S.equity)+' 元</b>；同一段期間一直抱著加權指數（不含股息）是 '+Math.round(S.bench)+' 元。';
+ '每次分成 10 份、每份 10%（選不到股票的份額買大盤），沒有訊號的時間全部放現金、不算利息：一開始的 100 元最後變成 <b>'+Math.round(S.equity)+' 元</b>；同一段期間一直抱著加權指數（不含股息）是 '+Math.round(S.bench)+' 元。這套規則大部分時間空手，主要價值在大跌時知道什麼時候敢買、買什麼，而不是贏過一直抱著。';
 /* 現在 */
 var N=B.now;function cell(ok,lbl,val){return '<div class="'+(ok?'ok':'no')+'">'+lbl+'<b>'+val+'</b>'+(ok?'已達標':'未達標')+'</div>'}
 $('nowbox').innerHTML='<p class="lead">資料日 '+ymd(N.d)+'。流動性風險要三個條件同時成立：</p><div class="sig">'+
