@@ -166,6 +166,16 @@ $('nowbox').innerHTML='<p class="lead">資料日 '+ymd(N.d)+'。流動性風險�
  cell(N.dd<=R.dd_line,'指數離 60 日高點',f1(N.dd)+'%')+cell(N.m10!=null&&N.m10<=R.margin_drop,'融資金額 10 日變化',f1(N.m10)+'%')+cell(N.mr&&N.mr<=R.mr_line,'估算維持率',f1(N.mr)+'%')+
  cell(N.m3!=null&&N.m3>R.calm_3d,'融資 3 日變化（進場要 > '+R.calm_3d+'%）',f1(N.m3)+'%')+'</div>'+
  '<p class="lead" style="margin-top:8px">門檻：跌超過 '+(-R.dd_line)+'%、融資 10 日減少超過 '+(-R.margin_drop)+'%、維持率低於 '+R.mr_line+'%。</p>';
+/* 官方：證交所儀表板 */
+var O=B.official||[];if(O.length){var o=O[O.length-1],p=O[Math.max(0,O.length-6)];
+ function ch(a,b){return b?(a>=b?'↑':'↓'):''}
+ $('nowbox').innerHTML+='<p class="lead" style="margin-top:12px">證交所官方（全市場，'+ymd(o[0].replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3'))+'）：</p><div class="sig">'+
+  '<div>全市場擔保維持率<b>'+f1(o[1])+'%</b>5 天前 '+f1(p[1])+'% '+ch(o[1],p[1])+'</div>'+
+  '<div>追繳戶數<b>'+(o[2]||0).toLocaleString()+'</b>5 天前 '+(p[2]||0).toLocaleString()+' '+ch(o[2],p[2])+'</div>'+
+  '<div>追繳金額<b>'+((o[3]||0)/1e8).toFixed(1)+'<small> 億</small></b>5 天前 '+((p[3]||0)/1e8).toFixed(1)+' 億</div>'+
+  '<div>處分（斷頭）金額<b>'+((o[5]||0)/1e8).toFixed(1)+'<small> 億</small></b>處分戶數 '+(o[4]||0).toLocaleString()+'</div></div>'+
+  '<p class="lead" style="margin-top:6px">官方數字從 '+ymd(O[0][0])+' 才有，所以 2001 年以來的回測用自己估的上市融資維持率；官方的追繳、斷頭數字放在這裡每天追蹤，判斷「斷頭潮是不是在退」：追繳戶數和處分金額連續下降、維持率回升，就是流動性開始變好。</p>';
+}
 /* 規則 */
 $('rulebox').innerHTML='<p><b>① 什麼時候算流動性風險</b><br>指數從 60 日高點跌超過 '+(-R.dd_line)+'%，而且上市融資金額 10 個交易日內減少超過 '+(-R.margin_drop)+'%，而且估算的融資維持率低於 '+R.mr_line+'%（130% 以下券商開始追繳、斷頭）。三個同時成立的那天記為「風險開始」。</p>'+
  '<p><b>② 什麼時候進場</b>（風險開始後 '+R.stress_wait+' 個交易日內，四個條件同一天成立）<ol><li>融資 3 日減幅縮小到 '+(-R.calm_3d)+'% 以內：斷頭賣壓變小</li><li>維持率比這段期間的最低點回升 '+R.mr_rebound+' 個百分點以上</li><li>加權指數收盤站上 5 日均線</li><li>外資 3 日合計買超（2004 年以前沒有資料，略過這條）</li></ol></p>'+

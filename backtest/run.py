@@ -48,6 +48,10 @@ for p in glob.glob(os.path.join(RAW, "fund_*.json")):
     fund.update(json.load(open(p)))
 taiex = {day(k): v for k, v in json.load(open(os.path.join(RAW, "taiex.json"))).items()}
 inst = {day(k): v for k, v in json.load(open(os.path.join(RAW, "inst.json"))).items()}
+try:
+    official = json.load(open(os.path.join(ROOT, "data", "bt", "official.json")))
+except Exception:
+    official = {}
 margin = {}
 for p in sorted(glob.glob(os.path.join(ROOT, "data", "bt", "margin", "*.json"))):
     for k, v in json.load(open(p)).items():
@@ -327,7 +331,8 @@ summary = dict(start=iso(S[0]["d"]), end=iso(S[-1]["d"]), n=len([e for e in epis
 series = [[iso(s["d"]), round(s["ix"]), round(s["mr"], 1) if s["mr"] else None, round(s["money"] / 1e8) if s["money"] else None] for s in S[::3]]
 os.makedirs(os.path.join(ROOT, "data", "bt"), exist_ok=True)
 json.dump(dict(rules=RULES, summary=summary, episodes=episodes, curve=curve, series=series,
-               now=dict(d=iso(S[-1]["d"]), ix=S[-1]["ix"], mr=S[-1]["mr"], m10=S[-1]["m10"], dd=S[-1]["dd"], m3=S[-1]["m3"])),
+               now=dict(d=iso(S[-1]["d"]), ix=S[-1]["ix"], mr=S[-1]["mr"], m10=S[-1]["m10"], dd=S[-1]["dd"], m3=S[-1]["m3"]),
+                official=[[k] + [v.get(x) for x in ("keepRate", "callAccNum", "callAmt", "exeAccNum", "exeAmt")] for k, v in sorted(official.items())][-120:]),
           open(os.path.join(ROOT, "data", "bt", "result.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print(json.dumps(summary, ensure_ascii=False))
 for e in episodes:
