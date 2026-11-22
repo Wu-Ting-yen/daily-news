@@ -95,42 +95,79 @@ for i, s in enumerate(S):
 
 
 # ---------- 個股：預估本益比 ----------
-def ttm_eps(c, d):
-    e = (fund.get(c) or {}).get("eps") or []
-    known = []
-    for q, v in e:
-        qd = day(q)
+def known_q(c, d):
+    """d 這天之前已公布的季報（Q1–Q3 季末後 45 天、Q4 後 90 天）"""
+    out = []
+    for q, v in (fund.get(c) or {}).get("fs") or []:
         lag = 90 if q[5:7] == "12" else 45
-        if qd + lag <= d:
-            known.append(v)
-    return sum(known[-4:]) if len(known) >= 4 else None
+        if day(q) + lag <= d:
+            out.append(v)
+    return out
 
 
-def rev_growth(c, d):
+def rev_parts(c, d):
+    """近 12 個月營收、近 3 個月營收年增率（月營收次月 10 日公布）"""
     rv = (fund.get(c) or {}).get("rev") or []
     t = D0 + dt.timedelta(days=d)
     m = {}
     for y, mo, v in rv:
-        pub = dt.date(y + (mo == 12), mo % 12 + 1, 10)
-        if pub <= t:
+        if dt.date(y + (mo == 12), mo % 12 + 1, 10) <= t:
             m[(y, mo)] = v
     if len(m) < 15:
+        return None, None
+    ks = sorted(m)
+    r12 = sum(m[k] for k in ks[-12:])
+    now = sum(m[k] for k in ks[-3:])
+    prev = sum(m.get((k[0] - 1, k[1]), 0) for k in ks[-3:])
+    return r12, (now / prev - 1 if prev > 0 else None)
+
+
+def fwd_eps(c, d):
+    """照 sky 的拆解：
+    1. 預估未來 4 季營收 = 近 12 個月營收 ×（1＋近 3 個月營收年增率，限 −30%～+50%）
+    2. × 近 4 季毛利率 − 近 4 季營業費用率 → 預估營業利益；＋近 4 季業外損益；×（1−近 4 季有效稅率）→ 預估稅後淨利（只算歸屬母公司的比例）
+    3. ÷ 最新一季流通股數（母公司淨利 ÷ EPS）→ 預估 EPS"""
+    q = known_q(c, d)[-4:]
+    if len(q) < 4:
         return None
-    ks = sorted(m)[-3:]
-    now = sum(m[k] for k in ks)
-    prev = sum(m.get((k[0] - 1, k[1]), 0) for k in ks)
-    return now / prev - 1 if prev > 0 else None
+    r12, g = rev_parts(c, d)
+    if not r12 or g is None:
+        return None
+    def S(k):
+        v = [x.get(k) for x in q]
+        return sum(v) if all(x is not None for x in v) else None
+    rev, gp, opx, oi = S("Revenue"), S("GrossProfit"), S("OperatingExpenses"), S("OperatingIncome")
+    nonop, pre = S("TotalNonoperatingIncomeAndExpense"), S("PreTaxIncome")
+    tax = S("IncomeTaxExpense") if S("IncomeTaxExpense") is not None else S("TAX")
+    ni, par = S("IncomeAfterTaxes"), S("EquityAttributableToOwnersOfParent")
+    last = q[-1]
+    if not rev or rev <= 0 or not last.get("EPS") or not last.get("EquityAttributableToOwnersOfParent"):
+        return None
+    shares = last["EquityAttributableToOwnersOfParent"] / last["EPS"]
+    if shares <= 0:
+        return None
+    gm = gp / rev if gp is not None else None
+    opr = opx / rev if opx is not None else (gm - oi / rev if gm is not None and oi is not None else None)
+    if gm is None or opr is None:
+        if oi is None:
+            return None
+        gm, opr = oi / rev, 0.0
+    if nonop is None:
+        nonop = (pre - oi) if pre is not None and oi is not None else 0.0
+    trate = min(max(abs(tax) / pre, 0.0), 0.4) if tax is not None and pre and pre > 0 else 0.2
+    own = min(max(par / ni, 0.0), 1.0) if par is not None and ni and ni > 0 else 1.0
+    frev = r12 * (1 + min(max(g, -0.3), 0.5))
+    fop = frev * (gm - opr)
+    fni = (fop + nonop) * (1 - trate) * own
+    return dict(eps=fni / shares, g=g, gm=gm, opr=opr, trate=trate, frev=frev)
 
 
 def fwd_pe(c, d):
     p = close_on(c, d)
-    e = ttm_eps(c, d)
-    g = rev_growth(c, d)
-    if not p or e is None or e <= 0 or g is None:
-        return None, e, g
-    g2 = min(max(g, -0.3), 0.5)
-    fe = e * (1 + g2)
-    return (p / fe if fe > 0 else None), e, g
+    f = fwd_eps(c, d)
+    if not p or not f or f["eps"] <= 0:
+        return None, (f["eps"] if f else None), (f["g"] if f else None)
+    return p / f["eps"], f["eps"], f["g"]
 
 
 _med = {}
@@ -173,7 +210,7 @@ def pick(d, mkt_dd):
         if sdd > mkt_dd - R["fell_more"]:
             continue
         pe, e, g = fwd_pe(c, d)
-        if not pe or g is None or g <= 0:
+        if not pe or g is None or g <= 0 or sum(x.get("EPS") or 0 for x in known_q(c, d)[-4:]) <= 0:
             continue
         med = pe_median(c, d)
         if not med:
@@ -182,7 +219,8 @@ def pick(d, mkt_dd):
         if ratio > R["cheap"]:
             continue
         out.append(dict(c=c, name=meta[c][1], ind=meta[c][2], dd=round(sdd, 1), pe=round(pe, 1), med=round(med, 1),
-                        ratio=round(ratio, 2), eps=round(e, 2), g=round(g * 100, 1), p=C[k - 1]))
+                        ratio=round(ratio, 2), eps=round(e, 2), g=round(g * 100, 1), p=C[k - 1],
+                        gm=round(fwd_eps(c, d)["gm"] * 100, 1), opm=round((fwd_eps(c, d)["gm"] - fwd_eps(c, d)["opr"]) * 100, 1)))
     out.sort(key=lambda x: x["ratio"])
     return out[:R["picks"]]
 

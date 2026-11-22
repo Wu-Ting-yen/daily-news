@@ -170,16 +170,16 @@ $('nowbox').innerHTML='<p class="lead">資料日 '+ymd(N.d)+'。流動性風險�
 $('rulebox').innerHTML='<p><b>① 什麼時候算流動性風險</b><br>指數從 60 日高點跌超過 '+(-R.dd_line)+'%，而且上市融資金額 10 個交易日內減少超過 '+(-R.margin_drop)+'%，而且估算的融資維持率低於 '+R.mr_line+'%（130% 以下券商開始追繳、斷頭）。三個同時成立的那天記為「風險開始」。</p>'+
  '<p><b>② 什麼時候進場</b>（風險開始後 '+R.stress_wait+' 個交易日內，四個條件同一天成立）<ol><li>融資 3 日減幅縮小到 '+(-R.calm_3d)+'% 以內：斷頭賣壓變小</li><li>維持率比這段期間的最低點回升 '+R.mr_rebound+' 個百分點以上</li><li>加權指數收盤站上 5 日均線</li><li>外資 3 日合計買超（2004 年以前沒有資料，略過這條）</li></ol></p>'+
  '<p><b>③ 用多少錢</b><br>選 '+R.picks+' 檔，每檔最多占資金 '+(100/R.picks)+'%。進場訊號當天先買一半（'+(R.first*100)+'%），之後 '+R.second_days+' 個交易日內指數站回 20 日均線再買另一半。選不滿 '+R.picks+' 檔，沒用到的錢放現金。</p>'+
- '<p><b>④ 買哪些</b>（當時成交值前 300 大的上市櫃股票）<ol><li>從 60 日高點的跌幅比大盤多跌 '+R.fell_more+' 個百分點以上</li><li>近四季 EPS 為正，近 3 個月營收比去年同期成長</li><li>預估本益比 ≤ 自己過去 5 年中位數 × '+R.cheap+'，越低越優先</li></ol>預估本益比＝股價 ÷ 預估 EPS，預估 EPS＝近四季 EPS ×（1＋近 3 個月營收年增率，限制在 −30%～+50%）。財報和營收都用「當時已經公布」的數字。</p>'+
+ '<p><b>④ 買哪些</b>（當時成交值前 300 大的上市櫃股票）<ol><li>從 60 日高點的跌幅比大盤多跌 '+R.fell_more+' 個百分點以上</li><li>近四季 EPS 為正，近 3 個月營收比去年同期成長</li><li>預估本益比 ≤ 自己過去 5 年中位數 × '+R.cheap+'，越低越優先</li></ol>預估本益比＝股價 ÷ 預估 EPS。預估 EPS 照財報拆解：① 未來 4 季營收＝近 12 個月營收 ×（1＋近 3 個月營收年增率，限制在 −30%～+50%）② × 近 4 季毛利率 − 近 4 季營業費用率＝預估營業利益，再加近 4 季業外損益、扣近 4 季有效稅率＝預估稅後淨利（只算歸屬母公司）③ ÷ 最新一季流通股數（母公司淨利 ÷ EPS）。財報和營收都用「當時已經公布」的數字。</p>'+
  '<p><b>⑤ 什麼時候出場</b>（先到先算）<ol><li>個股：預估本益比回到自己 5 年中位數（合理價）就賣</li><li>大盤升溫：維持率超過 '+R.heat_mr+'% 而且融資金額回到崩跌前的水準 → 全部賣出</li><li>停損：指數比恐慌時的最低點再跌 '+(-R.stop)+'% → 全部賣出</li><li>最多持有約 2 年</li></ol>每次買賣都扣掉手續費和證交稅，來回 '+R.cost+'%。</p>'+
  '<div class="warn">限制：① 官方沒有公布追繳戶數、斷頭金額的歷史資料，所以用「維持率 + 融資急減 + 指數大跌」代替。② 維持率是用每檔融資張數 × 收盤價 ÷ 融資金額自己估的，和新聞上券商估的數字會有一點差距。③ 已經下市的股票抓不到，結果會比實際好一點。④ 預估本益比用營收成長推估，不是分析師預估。</div>';
 /* 每一次 */
 $('epbox').innerHTML=B.episodes.slice().reverse().map(function(e){
   if(!e.entry)return '<div class="ep"><h3>'+ymd(e.stress)+' 風險開始<span style="color:var(--sub);font-size:14px">沒有進場</span></h3><div class="tl">'+e.note+'</div></div>';
-  var rows=(e.trades||[]).map(function(t){return '<tr><td>'+t.c+' '+t.name+'</td><td>'+t.dd+'%</td><td>'+t.pe+' / '+t.med+'</td><td>'+t.g+'%</td><td>'+ymd(t.sell).slice(2)+'</td><td class="'+(t.ret>0?'up':'down')+'"><b>'+sg(t.ret)+'</b></td></tr>'}).join('');
+  var rows=(e.trades||[]).map(function(t){return '<tr><td>'+t.c+' '+t.name+'</td><td>'+t.dd+'%</td><td>'+t.pe+' / '+t.med+'</td><td>'+t.eps+'</td><td>'+t.gm+'%</td><td>'+t.g+'%</td><td>'+ymd(t.sell).slice(2)+'</td><td class="'+(t.ret>0?'up':'down')+'"><b>'+sg(t.ret)+'</b></td></tr>'}).join('');
   return '<div class="ep"><h3>'+ymd(e.entry)+' 進場<span class="'+(e.port>0?'up':'down')+'">'+sg(e.port)+'</span></h3>'+
    '<div class="tl">風險開始 <b>'+ymd(e.stress)+'</b>（融資 10 日 '+f1(e.m10)+'%，維持率最低 '+f1(e.low_mr)+'%，指數最低 '+e.low_ix.toLocaleString()+'）→ 進場 <b>'+ymd(e.entry)+'</b>（指數 '+e.entry_ix.toLocaleString()+'，維持率 '+f1(e.entry_mr)+'%）'+(e.second?'→ 加碼 <b>'+ymd(e.second)+'</b>':'')+' → 出場 <b>'+ymd(e.exit)+'</b>：'+e.why+'。<br>同期間加權指數 '+sg(e.bench)+'；選到 '+(e.trades||[]).length+' 檔。</div>'+
-   (rows?'<div class="tw"><table><tr><th>股票</th><th>跌幅</th><th>預估本益比/5年中位</th><th>營收年增</th><th>賣出</th><th>報酬</th></tr>'+rows+'</table></div>':'')+'</div>';
+   (rows?'<div class="tw"><table><tr><th>股票</th><th>跌幅</th><th>預估本益比/5年中位</th><th>預估EPS</th><th>毛利率</th><th>營收年增</th><th>賣出</th><th>報酬</th></tr>'+rows+'</table></div>':'')+'</div>';
 }).join('');
 /* 圖 */
 function draw(){
