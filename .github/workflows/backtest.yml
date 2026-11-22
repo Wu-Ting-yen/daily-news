@@ -1,0 +1,34 @@
+name: 融資流動性回測
+on:
+  workflow_dispatch:
+    inputs:
+      data_run:
+        description: "股價與財報資料的 run id"
+        required: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: bt_raw
+          merge-multiple: true
+          run-id: ${{ inputs.data_run }}
+          github-token: ${{ github.token }}
+      - run: python backtest/fetch_market.py
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      - run: ls -la bt_raw && python backtest/run.py && python backtest/page.py
+      - name: 儲存
+        run: |
+          git config user.name "news-bot"
+          git config user.email "news-bot@users.noreply.github.com"
+          git add data/bt/result.json backtest.html
+          git diff --cached --quiet && exit 0
+          git commit -m "回測結果 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
+          for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; git rebase --abort 2>/dev/null; sleep 5; done
