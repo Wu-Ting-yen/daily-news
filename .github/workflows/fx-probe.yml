@@ -1,0 +1,11 @@
+name: fx-probe
+on:
+  push:
+    branches: [claude/project-thread-x3p1pk]
+    paths: [tools/fx_probe.py]
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -u tools/fx_probe.py
