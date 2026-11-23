@@ -10,6 +10,7 @@
     {"id": "ipo",      "name": "IPO 上市・定價",  "query": "IPO 定價 OR 上市 掛牌 OR 承銷價 when:2d"},
     {"id": "bigco",    "name": "大公司動態",      "query": "台積電 OR 輝達 OR 蘋果 OR 特斯拉 OR 微軟 OR 鴻海 OR OpenAI when:1d"},
     {"id": "space",    "name": "太空・發射",      "query": "SpaceX OR 火箭發射 OR 太空 發射 OR 星艦 when:2d"},
+    {"id": "ptt",      "name": "PTT 股板",       "ptt": "Stock", "board_name": "股板", "pages": 4, "min_push": 20, "max_items": 40},
     {"id": "macro",    "name": "央行・利率",      "query": "聯準會 OR 降息 OR 升息 OR 央行 利率 when:1d"}
   ],
   "alert_keywords": [

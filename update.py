@@ -41,7 +41,53 @@ def strip_tags(s):
     return html.unescape(re.sub(r"<[^>]+>", " ", s or "")).strip()
 
 
+def fetch_ptt(sec):
+    """PTT 網頁版看板列表（例如股板）：抓最新幾頁的標題、推文數、發文時間"""
+    board = sec["ptt"]
+    url = f"https://www.ptt.cc/bbs/{board}/index.html"
+    items = []
+    for _ in range(sec.get("pages", 3)):
+        req = urllib.request.Request(url, headers={"User-Agent": UA, "Cookie": "over18=1"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            page = r.read().decode("utf-8", "replace")
+        page_main = page.split('r-list-sep')[0]  # 置底文章不要
+        for ent in re.findall(r'<div class="r-ent">(.*?)<div class="mark">', page_main, re.S):
+            m = re.search(r'<a href="(/bbs/[^"]+/M\.(\d+)\.A\.[^"]+\.html)">(.*?)</a>', ent, re.S)
+            if not m:
+                continue  # 已刪除的文章
+            href, ts, title = m.group(1), int(m.group(2)), html.unescape(m.group(3)).strip()
+            nrec = strip_tags((re.search(r'<div class="nrec">(.*?)</div>', ent, re.S) or [None, ""])[1])
+            push = 100 if nrec == "爆" else (-10 if nrec.startswith("X") else int(nrec) if nrec.isdigit() else 0)
+            items.append({
+                "id": "ptt:" + href,
+                "title": title,
+                "source": f"PTT {sec.get('board_name', board)}",
+                "link": "https://www.ptt.cc" + href,
+                "time": datetime.fromtimestamp(ts, TPE).isoformat(),
+                "section": sec["id"],
+                "forum": True,
+                "push": push,
+            })
+        prev = re.search(r'<a class="btn wide" href="([^"]+)">&lsaquo; 上頁</a>', page)
+        if not prev:
+            break
+        url = "https://www.ptt.cc" + prev.group(1)
+    return items
+
+
+def ptt_keep(sec, it):
+    """要顯示的 PTT 文章：新聞類一律顯示，其他要夠多人推；公告、閒聊串不要"""
+    t = it["title"]
+    if re.match(r"^(Re: |Fw: )?\[(公告|閒聊)\]", t) or "盤中閒聊" in t or "盤後閒聊" in t:
+        return False
+    if re.match(r"^\[(新聞|情報)\]", t):
+        return True
+    return it.get("push", 0) >= sec.get("min_push", 20)
+
+
 def fetch(sec):
+    if "ptt" in sec:
+        return fetch_ptt(sec)
     req = urllib.request.Request(feed_url(sec), headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=30) as r:
         root = ET.fromstring(r.read())
@@ -184,7 +230,12 @@ def find_chat_id():
 
 
 def render(cfg, store, updated):
-    groups = cluster([v for v in store.values() if not v.get("low")])
+    groups = cluster([v for v in store.values() if not v.get("low") and not v.get("forum")])
+    secs = {s["id"]: s for s in cfg["sections"]}
+    forum = {}
+    for v in sorted(store.values(), key=lambda x: x["time"], reverse=True):
+        if v.get("forum") and v["section"] in secs and ptt_keep(secs[v["section"]], v):
+            forum.setdefault(v["section"], []).append([v])
     low = {}
     for v in sorted(store.values(), key=lambda x: x["time"], reverse=True):
         if v.get("low"):
@@ -198,6 +249,8 @@ def render(cfg, store, updated):
         sec = g[0]["section"]
         if id(g) not in shown and sec in by_sec and len(by_sec[sec]) < cfg["max_items_per_section"]:
             by_sec[sec].append(g)
+    for sid, gl in forum.items():
+        by_sec[sid] = gl[: secs[sid].get("max_items", 40)]
 
     def ago(iso):
         return f'<time datetime="{iso}">{datetime.fromisoformat(iso).strftime("%m/%d %H:%M")}</time>'
@@ -215,7 +268,9 @@ def render(cfg, store, updated):
         hot = " hot" if any(x.get("alert") for x in g) else ""
         out = (f'<article class="card{hot}"><a class="main" href="{html.escape(it["link"])}" target="_blank" rel="noopener">'
                f'<h3>{html.escape(it["title"])}</h3>'
-               f'<div class="meta"><span class="src">{html.escape(it["source"])}</span>{ago(it["time"])}</div></a>')
+               f'<div class="meta"><span class="src">{html.escape(it["source"])}</span>{ago(it["time"])}'
+               + (f'<span class="push{" boom" if it["push"] >= 100 else ""}">{"爆" if it["push"] >= 100 else "推 " + str(it["push"])}</span>' if it.get("forum") else "")
+               + '</div></a>')
         if len(g) > 1:
             out += f'<details><summary>另有 {len(g) - 1} 則相關報導</summary><div class="rels">'
             for x in g[1:]:
@@ -265,6 +320,12 @@ def main():
             print(f"[{sec['id']}] 抓取失敗: {e}", file=sys.stderr)
             continue
         for it in items:
+            if it.get("forum"):
+                if it["id"] in store:
+                    store[it["id"]]["push"] = it["push"]  # 推文數會一直變，更新
+                elif datetime.fromisoformat(it["time"]) >= cutoff:
+                    store[it["id"]] = it
+                continue
             nt = norm(it["title"])
             if datetime.fromisoformat(it["time"]) < cutoff or it["id"] in store or nt in titles:
                 continue
@@ -278,14 +339,14 @@ def main():
     # 只有「全新的事件」才推播；同一件事後續的報導不再重複通知
     new_alerts = []
     if not first_run:
-        for g in cluster([v for v in store.values() if datetime.fromisoformat(v["time"]) >= cutoff and not v.get("low")]):
+        for g in cluster([v for v in store.values() if datetime.fromisoformat(v["time"]) >= cutoff and not v.get("low") and not v.get("forum")]):
             lead = g[0]
             if (lead["id"] not in old_ids and lead.get("alert")
                     and datetime.fromisoformat(lead["time"]) > now - timedelta(hours=6)):
                 new_alerts.append(lead)
 
     for v in store.values():
-        if any(b.lower() in v["source"].lower() for b in block):
+        if not v.get("forum") and any(b.lower() in v["source"].lower() for b in block):
             v["low"] = True
             v.pop("alert", None)
     store = {k: v for k, v in store.items() if datetime.fromisoformat(v["time"]) >= cutoff}
