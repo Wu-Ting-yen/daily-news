@@ -79,11 +79,14 @@ STOP = set("即時 新聞 美股 台股 快訊 最新 一次 今日 今天 明�
 
 def tokens(t):
     t = re.sub(r"【[^】]*】", "", t)
+    t = re.sub(r"\s*-\s*股市爆料同學會\s*$", "", t)
+    t = re.sub(r"^\w{2,6}\s+\S+\s*-\s*", "", t) if re.match(r"^[0-9A-Z]{2,6}\s", t) else t  # 論壇「2330 台積電 - 」前綴
+    num = {x.replace("％", "%") for x in re.findall(r"\d{2,}(?:%|％)", t)}
     en = {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9]+", t)}
     zh = set()
     for seg in re.findall(r"[\u4e00-\u9fff]+", t):
         zh |= {seg[i:i + 2] for i in range(len(seg) - 1)}
-    return (en | zh) - STOP
+    return (en | zh | num) - STOP
 
 
 def cluster(items, threshold=0.18):
@@ -116,17 +119,28 @@ def cluster(items, threshold=0.18):
             best["t"].append((tk, wt))
         else:
             groups.append({"m": [it], "t": [(tk, wt)]})
-    # 第二輪：標題都提到同一個少見的英文名稱（例如 Anthropic、SpaceX）就併成同一個話題
+    # 第二輪：標題提到同一個少見的英文名稱（例如 SpaceX），而且中文內容也有點像，才併成同一則
+    # （只看名稱會把「輝達」「OpenAI」整週的新聞全部吞成一大包，重要新聞反而被藏起來）
+    def sim(a, b):
+        (ta, wa), (tb, wb) = a, b
+        return weight(ta & tb) / max(1e-9, (wa * wb) ** 0.5)
+
     merged, by_name = [], {}
     for g in groups:
         names = {x for x in g["t"][0][0] if x.isascii() and len(x) >= 4 and 3 <= df[x] <= n * 0.12}
-        target = next((by_name[x] for x in sorted(names) if x in by_name), None)
+        target = None
+        for x in sorted(names):
+            cand = by_name.get(x)
+            if cand and len(cand["m"]) < 25 and sim(g["t"][0], cand["lead"]) >= threshold * 0.6:
+                target = cand
+                break
         if target is None:
-            target = []
+            target = {"m": [], "lead": g["t"][0]}
             merged.append(target)
             for x in names:
-                by_name[x] = target
-        target.extend(g["m"])
+                by_name.setdefault(x, target)
+        target["m"].extend(g["m"])
+    merged = [t["m"] for t in merged]
     return [sorted(m, key=lambda x: x["time"]) for m in merged]
 
 
