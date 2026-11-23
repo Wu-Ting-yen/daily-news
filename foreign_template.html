@@ -122,7 +122,7 @@ details.all summary{padding:10px 0}
 </header>
 <div class="navwrap"><nav>
   <a class="navlink back" href="./">← 新聞</a><a class="navlink back" href="stocks.html">台股分析</a>
-  <a class="navlink" href="#monthly">每月比例</a><a class="navlink" href="#daily">每日走勢</a><a class="navlink" href="#reserve">外匯存底・匯率</a><a class="navlink" href="#how">怎麼算</a>
+  <a class="navlink" href="#monthly">每月比例</a><a class="navlink" href="#daily">每日走勢</a><a class="navlink" href="#flow">每日資金流向</a><a class="navlink" href="#reserve">外匯存底・匯率</a><a class="navlink" href="#how">怎麼算</a>
 </nav></div>
 <main>
 <p class="lead" id="lead"></p>
@@ -144,6 +144,16 @@ details.all summary{padding:10px 0}
   <details class="all"><summary>每天的完整數字（<span id="dcount"></span> 個交易日）</summary><div class="tw"><table id="dtable"></table></div></details>
 </div>
 
+<div class="card" id="flow">
+  <h2>每日資金流向<em>DAILY FLOW · 2026</em></h2>
+  <p class="lead" id="flowlead"></p>
+  <div class="legend"><span><i style="background:#b0453a"></i>外資買超</span><span><i style="background:#3f7a5a"></i>外資賣超</span><span><i class="ln" style="background:var(--fogdeep)"></i>今年累計（右軸）</span></div>
+  <div class="chart" id="fchart"><div class="tip"></div></div>
+  <div class="legend" style="margin-top:14px"><span><i class="ln" style="background:var(--copper)"></i>美元兌新台幣（越高＝新台幣越弱）</span><span id="vleg"><i style="background:var(--fog)"></i>台北外匯市場成交量（億美元）</span></div>
+  <div class="chart" id="xchart"><div class="tip"></div></div>
+  <details class="all"><summary>每天的完整數字</summary><div class="tw"><table id="ftable"></table></div></details>
+</div>
+
 <div class="card" id="reserve">
   <h2>外匯存底・匯率<em>RESERVES · USD/TWD</em></h2>
   <p class="lead">外匯存底是央行每個月初公布的上個月底數字（單位：十億美元）。長條是外匯存底，折線是當月最後一個交易日的美元兌新台幣匯率（數字越大＝新台幣越弱）。</p>
@@ -158,7 +168,8 @@ details.all summary{padding:10px 0}
   <p><b>台積電部分</b>＝台積電外資持有的市值 ÷ 整個上市市值。<b>其他</b>＝總比例 − 台積電部分。例如 11 月 20 日總比例 47.2%＝台積電 29.9%＋其他 17.4%（台積電本身就占上市市值四成多，所以外資的台積電部分特別大）。</p>
   <p><b>台積電自己的外資比例</b>（表格最右邊）是另一個數字：台積電這一家公司的股票，有幾成在外資手上（通常七成多）。</p>
   <p>只算上市普通股（不含 ETF、存託憑證、上櫃股票），資料來自證交所每天公布的外資持股統計和收盤價。台積電股價漲跌也會讓「台積電部分」變大變小，不一定是外資真的買賣。</p>
-  <p><b>外匯存底</b>來自中央銀行開放資料；<b>匯率</b>來自期交所每日公布的美元兌新台幣匯率，表格列出月底和當月平均。</p>
+  <p><b>外資買賣超</b>＝外資（含陸資）當天買進金額減賣出金額，上市來自證交所「三大法人買賣金額統計」、上櫃來自櫃買中心，單位億元新台幣。外資賣超後如果把錢換成美元匯出，新台幣會貶值、外匯市場成交量也會放大，所以這三條放在一起看。<b>外匯市場成交量</b>是台北外匯經紀公司每天公布的美元兌新台幣即期成交金額。</p>
+  <p><b>外匯存底</b>只有每月資料（央行每月初公布上個月底的數字），央行在外匯市場買賣美元的金額也只有每半年公布一次，所以沒有每天的版本。<b>外匯存底</b>來自中央銀行開放資料；<b>匯率</b>來自期交所每日公布的美元兌新台幣匯率，表格列出月底和當月平均。</p>
 </div>
 <p class="foot">資料日 {{ASOF}}・每個交易日收盤後更新・不是投資建議</p>
 </main>
@@ -269,7 +280,52 @@ function drawRes(){
 }
 $('rtable').innerHTML='<tr><th>月份</th><th>外匯存底</th><th>比上月</th><th>月底匯率</th><th>月平均匯率</th></tr>'+
  R.slice().reverse().map(function(r){return '<tr><td>'+r.m.replace('-','/')+'</td><td><b>'+r.res.toFixed(2)+'</b> 十億美元</td><td class="'+cls(r.chg)+'">'+sg(r.chg)+'</td><td>'+(r.fx_end?r.fx_end.toFixed(3):'—')+'</td><td>'+(r.fx_avg?r.fx_avg.toFixed(3):'—')+'</td></tr>'}).join('');
-function all(){drawDaily();drawRes()}
+/* 每日資金流向 */
+var FL=(D.flow||[]).filter(function(r){return r[1]!=null||r[3]!=null});
+function net(r){return r[1]==null?null:(r[1]||0)+(r[2]||0)}
+var cum=[],cs=0;FL.forEach(function(r){var v=net(r);if(v!=null)cs+=v;cum.push(cs)});
+var hasVol=FL.some(function(r){return r[4]!=null});if(!hasVol)$('vleg').style.display='none';
+function yi(v){return v==null?'—':(v>0?'+':'')+Math.round(v).toLocaleString('en-US')+' 億'}
+if(FL.length){
+  var lf=FL[FL.length-1],w5=FL.slice(-5).reduce(function(a,r){return a+(net(r)||0)},0),f0=FL.find(function(r){return r[3]});
+  $('flowlead').innerHTML='最近一天（'+md(lf[0])+'）外資在上市＋上櫃'+(net(lf)>=0?'買超':'賣超')+' <b class="'+cls(net(lf))+'">'+Math.abs(Math.round(net(lf)||0)).toLocaleString('en-US')+' 億元</b>，近 5 個交易日合計'+(w5>=0?'買超':'賣超')+' '+Math.abs(Math.round(w5)).toLocaleString('en-US')+' 億，今年累計'+(cs>=0?'買超':'賣超')+' '+Math.abs(Math.round(cs)).toLocaleString('en-US')+' 億。'+
+   (lf[3]&&f0?'美元兌新台幣 '+lf[3].toFixed(3)+'（今年初 '+f0[3].toFixed(3)+'，新台幣'+(lf[3]>f0[3]?'貶值 ':'升值 ')+Math.abs((lf[3]/f0[3]-1)*100).toFixed(1)+'%）。':'')+
+   '手指按住圖表可以看每一天的數字。';
+}
+function drawFlow(){
+  var n=FL.length,box=$('fchart');if(!n){box.innerHTML='<p class="lead">資料準備中，下次更新後就會出現。</p>';$('xchart').innerHTML='';return}
+  var W=Math.max(320,box.clientWidth||640),H=W<480?220:250,pl=44,pr=44,pt=10,pb=22;
+  var lo=0,hi=0;FL.forEach(function(r){var v=net(r);if(v!=null){lo=Math.min(lo,v);hi=Math.max(hi,v)}});
+  var cl=Math.min.apply(null,cum.concat([0])),ch=Math.max.apply(null,cum.concat([0]));if(cl==ch)ch=cl+1;
+  var X=function(i){return pl+(i+.5)*(W-pl-pr)/n},Y=function(v){return pt+(1-(v-lo)/(hi-lo||1))*(H-pt-pb)},Q=function(v){return pt+(1-(v-cl)/(ch-cl))*(H-pt-pb)};
+  var g='',bw=Math.max(1,(W-pl-pr)/n-.8);
+  ticks(lo,hi,4).forEach(function(v){g+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="'+C.line+'" stroke-dasharray="'+(v==0?'':'2 4')+'"/><text x="'+(pl-5)+'" y="'+(Y(v)+4)+'" font-size="10.5" fill="'+C.sub+'" text-anchor="end">'+v.toLocaleString('en-US')+'</text>'});
+  ticks(cl,ch,4).forEach(function(v){g+='<text x="'+(W-pr+5)+'" y="'+(Q(v)+4)+'" font-size="10.5" fill="'+C.tot+'">'+(v/1e4).toFixed(1)+'兆</text>'});
+  var lm='',lx=-99;FL.forEach(function(r,i){var m=r[0].slice(5,7);if(m!=lm){lm=m;if(X(i)-lx<30)return;lx=X(i);g+='<text x="'+(X(i))+'" y="'+(H-6)+'" font-size="10.5" fill="'+C.sub+'">'+(+m)+'月</text>'}});
+  FL.forEach(function(r,i){var v=net(r);if(v==null)return;var y0=Y(0),y1=Y(v);g+='<rect x="'+(X(i)-bw/2).toFixed(1)+'" width="'+bw.toFixed(2)+'" y="'+Math.min(y0,y1).toFixed(1)+'" height="'+Math.max(.5,Math.abs(y1-y0)).toFixed(1)+'" fill="'+(v>=0?'#b0453a':'#3f7a5a')+'" fill-opacity=".8"/>'});
+  g+='<polyline fill="none" stroke="'+C.tot+'" stroke-width="2" stroke-linejoin="round" points="'+cum.map(function(v,i){return X(i).toFixed(1)+','+Q(v).toFixed(1)}).join(' ')+'"/>';
+  g+='<line class="cur" y1="'+pt+'" y2="'+(H-pb)+'" stroke="'+C.text+'" stroke-opacity=".4" visibility="hidden"/>';
+  box.innerHTML=svg(W,H,g)+'<div class="tip"></div>';
+  var tipf=function(i){var r=FL[i];return '<b>'+r[0].replace(/-/g,'/')+'</b><br>外資 上市 '+yi(r[1])+'　上櫃 '+yi(r[2])+'<br>合計 <span class="'+cls(net(r))+'">'+yi(net(r))+'</span>　今年累計 '+yi(cum[i])+(r[3]?'<br>匯率 '+r[3].toFixed(3):'')+(r[4]!=null?'　外匯成交 '+r[4].toFixed(1)+' 億美元':'')};
+  hover(box,n,X,W,tipf);
+  /* 匯率＋外匯成交量 */
+  var bx=$('xchart'),H2=W<480?190:210;
+  var fl=1e9,fh=-1e9,vh=0;FL.forEach(function(r){if(r[3]){fl=Math.min(fl,r[3]);fh=Math.max(fh,r[3])}if(r[4]!=null)vh=Math.max(vh,r[4])});
+  var fp=(fh-fl)*.15||.2;fl-=fp;fh+=fp;vh=vh*1.6||1;
+  var F=function(v){return pt+(1-(v-fl)/(fh-fl))*(H2-pt-pb)},V=function(v){return pt+(1-v/vh)*(H2-pt-pb)};
+  var g2='';
+  ticks(fl,fh,4).forEach(function(v){g2+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+F(v)+'" y2="'+F(v)+'" stroke="'+C.line+'" stroke-dasharray="2 4"/><text x="'+(pl-5)+'" y="'+(F(v)+4)+'" font-size="10.5" fill="'+C.t+'" text-anchor="end">'+v.toFixed(2)+'</text>'});
+  if(hasVol){ticks(0,vh,3).forEach(function(v){g2+='<text x="'+(W-pr+5)+'" y="'+(V(v)+4)+'" font-size="10.5" fill="'+C.o+'">'+v+'</text>'});
+    FL.forEach(function(r,i){if(r[4]!=null)g2+='<rect x="'+(X(i)-bw/2).toFixed(1)+'" width="'+bw.toFixed(2)+'" y="'+V(r[4]).toFixed(1)+'" height="'+(V(0)-V(r[4])).toFixed(1)+'" fill="'+C.o+'" fill-opacity=".55"/>'})}
+  lm='';lx=-99;FL.forEach(function(r,i){var m=r[0].slice(5,7);if(m!=lm){lm=m;if(X(i)-lx<30)return;lx=X(i);g2+='<text x="'+X(i)+'" y="'+(H2-6)+'" font-size="10.5" fill="'+C.sub+'">'+(+m)+'月</text>'}});
+  g2+='<polyline fill="none" stroke="'+C.t+'" stroke-width="2.2" stroke-linejoin="round" points="'+FL.map(function(r,i){return r[3]?X(i).toFixed(1)+','+F(r[3]).toFixed(1):null}).filter(Boolean).join(' ')+'"/>';
+  g2+='<line class="cur" y1="'+pt+'" y2="'+(H2-pb)+'" stroke="'+C.text+'" stroke-opacity=".4" visibility="hidden"/>';
+  bx.innerHTML=svg(W,H2,g2)+'<div class="tip"></div>';
+  hover(bx,n,X,W,tipf);
+}
+$('ftable').innerHTML='<tr><th>日期</th><th>上市外資</th><th>上櫃外資</th><th>合計</th><th>今年累計</th><th>匯率</th>'+(hasVol?'<th>外匯成交量</th>':'')+'</tr>'+
+ FL.map(function(r,i){return [r,i]}).reverse().map(function(a){var r=a[0],i=a[1];return '<tr><td>'+r[0].slice(5).replace('-','/')+'</td><td class="'+cls(r[1])+'">'+yi(r[1])+'</td><td class="'+cls(r[2])+'">'+yi(r[2])+'</td><td class="'+cls(net(r))+'"><b>'+yi(net(r))+'</b></td><td>'+yi(cum[i])+'</td><td>'+(r[3]?r[3].toFixed(3):'—')+'</td>'+(hasVol?'<td>'+(r[4]!=null?r[4].toFixed(1)+' 億美元':'—')+'</td>':'')+'</tr>'}).join('');
+function all(){drawDaily();drawFlow();drawRes()}
 all();var rt;addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(all,200)});
 })();
 

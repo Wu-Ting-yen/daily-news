@@ -171,6 +171,74 @@ def update_daily():
     return rows
 
 
+# ---------- 每日外資買賣超（上市＋上櫃，億元） ----------
+FLOW = os.path.join(DIR, "flow.json")
+
+
+def net_day(d):
+    tw = otc = None
+    j = jget(f"https://www.twse.com.tw/rwd/zh/fund/BFI82U?type=day&dayDate={d:%Y%m%d}&response=json")
+    if j and j.get("stat") == "OK":
+        for r in j.get("data") or []:
+            if str(r[0]).startswith("外資及陸資"):
+                tw = (tw or 0) + (num(r[3]) or 0)
+            elif str(r[0]) == "外資自營商":
+                tw = (tw or 0) + (num(r[3]) or 0)
+    time.sleep(2)
+    j = jget(f"https://www.tpex.org.tw/web/stock/3insti/3insti_summary/3itrdsum_result.php?l=zh-tw&o=json&d={d.year - 1911}/{d:%m/%d}&t=D")
+    try:
+        for r in j["tables"][0]["data"]:
+            if str(r[0]).strip() == "外資及陸資合計":
+                otc = num(r[3])
+    except Exception:
+        pass
+    if tw is None:
+        return None
+    return {"tw": round(tw / 1e8, 2), "otc": round(otc / 1e8, 2) if otc is not None else None}
+
+
+def update_flow(days):
+    fl = load(FLOW, {})
+    new = 0
+    for k in days:
+        if k in fl and fl[k].get("otc") is not None:
+            continue
+        v = net_day(dt.date.fromisoformat(k))
+        if v:
+            fl[k] = v
+            new += 1
+        time.sleep(2)
+        if new and new % 20 == 0:
+            save(FLOW, dict(sorted(fl.items())))
+    fl = dict(sorted(fl.items()))
+    save(FLOW, fl)
+    print("  外資買賣超", len(fl), "天，新增", new)
+    return fl
+
+
+# ---------- 台北外匯市場每日成交量（億美元） ----------
+FXVOL = os.path.join(DIR, "fxvol.json")
+
+
+def update_fxvol():
+    """台北外匯市場發展基金會每年一個 CSV：DATE,OPEN,CLOSE,HIGH,LOW,VOLUME(USD 1 Million)"""
+    vol = load(FXVOL, {})
+    today = dt.datetime.now(TZ).date()
+    for y in range(START.year, today.year + 1):
+        b = get(f"https://www.tpefx.com.tw/uploads/service/tw/{y}nt.csv")
+        if not b:
+            continue
+        for r in csv.reader(io.StringIO(b.decode("utf-8-sig", "replace"))):
+            if len(r) > 5 and re.match(r"\d{4}-\d{2}-\d{2}$", r[0].strip()):
+                v = num(r[5])
+                if v:
+                    vol[r[0].strip()] = round(v / 100, 2)  # 百萬美元 → 億美元
+    vol = dict(sorted(vol.items()))
+    save(FXVOL, vol)
+    print("  外匯成交量", len(vol), "天", list(vol.items())[-1:] if vol else "")
+    return vol
+
+
 # ---------- 匯率（期交所，美元/新台幣） ----------
 def update_fx():
     fx = load(FX, {})
@@ -237,6 +305,10 @@ if __name__ == "__main__":
     fx = update_fx()
     print("外匯存底…")
     res = update_reserves()
+    print("外資買賣超…")
+    flow = update_flow([r["d"] for r in rows])
+    print("外匯成交量…")
+    vol = update_fxvol()
     import foreign_page
-    foreign_page.build(rows, fx, res)
+    foreign_page.build(rows, fx, res, flow, vol)
     print("完成", len(rows), "天", len(fx), "匯率", len(res), "個月存底")
