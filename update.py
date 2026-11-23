@@ -250,7 +250,9 @@ def render(cfg, store, updated):
         cnt = {}
         for x in g:
             cnt[x["section"]] = cnt.get(x["section"], 0) + 1
-        sec = max(cnt, key=lambda k: (cnt[k], k == g[-1]["section"]))
+        # 同票時：專門分類（科技、台股…）優先於頭條、財經這種大雜燴
+        order = [s["id"] for s in cfg["sections"]]
+        sec = max(cnt, key=lambda k: (cnt[k], k not in ("top", "business"), -order.index(k) if k in order else -99))
         if id(g) not in shown and sec in by_sec and len(by_sec[sec]) < cfg["max_items_per_section"]:
             by_sec[sec].append(g)
     for sid, gl in forum.items():
