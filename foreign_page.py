@@ -16,7 +16,7 @@ def fx_on(fx, d):
     return best
 
 
-def build(rows, fx, res):
+def build(rows, fx, res, flow=None, vol=None):
     # 每月：取每個月最後一個交易日
     months = {}
     for r in rows:
@@ -51,8 +51,15 @@ def build(rows, fx, res):
         f = fx.get(r["d"])
         drows.append([r["d"], r["total"], r["tsmc"], r["other"], r["taiex"], f, r["tsmc_own"]])
     fxd = [[k, v] for k, v in fx.items() if k >= "2026-01-01"]
+    # 每日資金流向：外資買賣超（上市、上櫃，億元）、匯率、台北外匯市場成交量（億美元）
+    flow, vol = flow or {}, vol or {}
+    fl = []
+    for r in rows:
+        k = r["d"]
+        f = flow.get(k) or {}
+        fl.append([k, f.get("tw"), f.get("otc"), fx.get(k), vol.get(k)])
     last = rows[-1] if rows else None
-    data = {"months": mlist, "daily": drows, "reserves": rlist, "fx": fxd}
+    data = {"months": mlist, "daily": drows, "reserves": rlist, "fx": fxd, "flow": fl}
     now = dt.datetime.now(TZ)
     with open(os.path.join(ROOT, "foreign_template.html"), encoding="utf-8") as f:
         html = f.read()
