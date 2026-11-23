@@ -246,7 +246,11 @@ def render(cfg, store, updated):
     shown = {id(g) for g in alerts}
     by_sec = {s["id"]: [] for s in cfg["sections"]}
     for g in groups:
-        sec = g[0]["section"]
+        # 分頁：看這組報導大多來自哪個分類（不是只看最早那一則）
+        cnt = {}
+        for x in g:
+            cnt[x["section"]] = cnt.get(x["section"], 0) + 1
+        sec = max(cnt, key=lambda k: (cnt[k], k == g[-1]["section"]))
         if id(g) not in shown and sec in by_sec and len(by_sec[sec]) < cfg["max_items_per_section"]:
             by_sec[sec].append(g)
     for sid, gl in forum.items():
@@ -257,13 +261,20 @@ def render(cfg, store, updated):
 
     def card(g):
         # 標題：跟這個話題最貼近的「最新」一則；其餘依時間新到舊
-        lt = tokens(g[0]["title"])
+        # 用整組報導最常出現的詞當「話題」，挑最新、而且有講到這些詞的那則當標題
+        freq = {}
+        for x in g:
+            for t in tokens(x["title"]):
+                freq[t] = freq.get(t, 0) + 1
+        core = {t for t, c in freq.items() if c >= max(2, len(g) * 0.4)}
         it = g[0]
-        for x in sorted(g[1:], key=lambda x: x["time"], reverse=True):
-            xt = tokens(x["title"])
-            if len(lt & xt) / max(1, len(lt | xt)) >= 0.15:
-                it = x
-                break
+        if core:
+            for x in sorted(g, key=lambda x: x["time"], reverse=True):
+                if len(tokens(x["title"]) & core) >= min(3, len(core)) * 0.6:
+                    it = x
+                    break
+        else:
+            it = max(g, key=lambda x: x["time"])
         g = [it] + sorted([x for x in g if x is not it], key=lambda x: x["time"], reverse=True)
         hot = " hot" if any(x.get("alert") for x in g) else ""
         out = (f'<article class="card{hot}"><a class="main" href="{html.escape(it["link"])}" target="_blank" rel="noopener">'
@@ -349,6 +360,8 @@ def main():
         if not v.get("forum") and any(b.lower() in v["source"].lower() for b in block):
             v["low"] = True
             v.pop("alert", None)
+        elif not v.get("forum") and any(k in v["title"].lower() for k in kws):
+            v["alert"] = True  # 新加的關鍵字也套用到之前抓到的新聞
     store = {k: v for k, v in store.items() if datetime.fromisoformat(v["time"]) >= cutoff}
     save("data/news.json", store)
     render(cfg, store, now.strftime("%Y/%m/%d %H:%M"))

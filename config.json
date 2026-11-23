@@ -5,6 +5,7 @@
   "sections": [
     {"id": "top",      "name": "今日頭條",       "url": "https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
     {"id": "business", "name": "財經",           "url": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+    {"id": "twstock",  "name": "台股・盤勢",     "query": "台股 OR 加權指數 OR 證交所 OR 金管會 OR 融資 OR 外資 賣超 when:1d"},
     {"id": "tech",     "name": "科技",           "url": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
     {"id": "world",    "name": "國際",           "url": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
     {"id": "ipo",      "name": "IPO 上市・定價",  "query": "IPO 定價 OR 上市 掛牌 OR 承銷價 when:2d"},
