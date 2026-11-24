@@ -54,8 +54,8 @@ def build(rows, fx, res, flow=None, vol=None):
     # 每日資金流向：外資買賣超（上市、上櫃，億元）、匯率、台北外匯市場成交量（億美元）
     flow, vol = flow or {}, vol or {}
     fl = []
-    for r in rows:
-        k = r["d"]
+    days = sorted({r["d"] for r in rows} | set(flow))
+    for k in days:
         f = flow.get(k) or {}
         fl.append([k, f.get("tw"), f.get("otc"), fx.get(k), vol.get(k)])
     last = rows[-1] if rows else None
