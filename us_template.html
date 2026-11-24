@@ -302,6 +302,7 @@ details.full{border-top:1px solid var(--line)}
 .gb .fz{background:linear-gradient(90deg,var(--copper2),var(--copper));opacity:.55;border-radius:4px}
 .gb .cw{width:2px;background:#a5574a;opacity:.8}
 .gb .pt{width:12px;height:12px;top:1px;margin-left:-6px;border-radius:50%;border:2px solid var(--card);box-shadow:0 1px 4px #0003}
+.gb .tr i.lvpt{width:12px;height:12px;top:1px;margin-left:-6px;border-radius:50%;border:2px solid var(--fogdeep);background:transparent;box-shadow:0 0 0 2px var(--card);transition:left .6s ease}
 .gb .pt.good{background:var(--fogdeep)}.gb .pt.mid{background:var(--copper)}.gb .pt.bad{background:#a5574a}
 .tw{overflow-x:auto;margin:0 -4px}
 .ind-t.us{font-size:13px}
@@ -322,6 +323,35 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 .ostats details.how2 b,details.how2 b{display:inline;font:700 12.5px "Noto Sans TC",sans-serif;color:var(--copper)}
 .ostats>div:has(details.how2[open]){grid-column:1/-1}
 .src{font-size:12px;color:var(--sub);margin-top:10px}
+/* 即時報價 */
+.lvbar{padding:0 16px 12px}
+.lvrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:8px 12px;border-radius:14px;background:#ffffff70;border:1px solid #ffffffa0;backdrop-filter:blur(6px);font-size:12.5px;color:var(--sub);min-height:38px}
+@media (prefers-color-scheme:dark){.lvrow{background:#ffffff0c;border-color:#ffffff14}}
+.lvs{display:inline-flex;align-items:center;gap:6px;color:var(--sub)}
+.lvs i,.lvtag i{width:7px;height:7px;border-radius:50%;background:var(--sub);opacity:.6;flex:none}
+.lvs.on{color:var(--fogdeep);font-weight:500}.lvs.on i,.lv-open .lv.ok .lvtag i{background:#b0453a;opacity:1;animation:lvp 1.6s ease-in-out infinite}
+.lvs.off{color:#a5574a}
+@keyframes lvp{0%,100%{box-shadow:0 0 0 0 #b0453a55}50%{box-shadow:0 0 0 4px #b0453a00}}
+.lvi{display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap}
+.lvi em{font-style:normal;color:var(--sub)}
+.lvi b{font:600 17px/1 "Cormorant Garamond",serif;color:var(--text)}
+.lvi i{font-style:normal;font-size:12px}
+.lvhow{margin:6px 4px 0;font-size:12.5px;color:var(--sub)}
+.lvhow{border-top:0}.lvhow summary{cursor:pointer;color:var(--fogdeep);list-style:none;display:inline-flex;padding:2px 4px;font-size:12.5px}.lvhow summary::after{content:none}
+.lvhow summary::-webkit-details-marker{display:none}
+.lvhow summary::before{content:"ⓘ ";}
+.lvhow>div{margin-top:6px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);line-height:1.75;color:var(--text)}
+.lvhow p{margin:0 0 6px}.lvhow b{color:var(--copper)}.lvhow .lvt{color:var(--sub);margin:0}
+.lv{margin:2px 18px 12px;padding:8px 12px;border-radius:12px;background:linear-gradient(90deg,#8ea3b61f,#8ea3b608);border:1px solid #8ea3b633;font-size:12px;color:var(--sub);min-height:20px}
+.lv:not(.ok){color:var(--sub);opacity:.7}
+.lvm{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.lvtag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;letter-spacing:.1em;color:var(--fogdeep);font-weight:500}
+.lvm b{font:600 22px/1 "Cormorant Garamond",serif;color:var(--text)}
+.lvm span:not(.lvtag){font-size:13px}
+.lvx{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:4px}
+.lvx .tm{margin-left:auto;font-variant-numeric:tabular-nums}
+.lvx u{text-decoration:none;color:#fff;border-radius:6px;padding:0 6px;font-size:11.5px}
+.lvx u.good{background:var(--fogdeep)}.lvx u.mid{background:var(--copper)}.lvx u.bad{background:#a5574a}
 </style>
 </head>
 <body>
@@ -331,7 +361,12 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
     <div class="upd">UPDATED<br>{{UPDATED}}</div>
   </div>
   {{SUMMARY}}
-  <div class="stripe"></div>
+  <div class="lvbar" id="lvbar" data-kind="us" data-syms="GI:INX:INDEX|S&amp;P 500,GI:IXIC:INDEX|那斯達克,GI:SOX:INDEX|費半"><div class="lvrow"><span class="lvs"><i></i>載入即時報價…</span></div>
+  <details class="lvhow"><summary>哪些數字是即時的？怎麼算？</summary><div><p><b>即時（開盤時每 15 秒）</b>：每檔卡片上標「即時」的那一行：現價、漲跌、成交量、盤中位置、距買權牆；上面這排的 S&amp;P 500、那斯達克、費半也是。總覽「現價離地板多遠」圖上的<b>空心圈</b>是即時價，實心圓點是收盤價。</p>
+<p><b>盤中位置怎麼判斷</b>：跟每天收盤後用的規則一樣，只是把收盤價換成現價：低於地板下緣＝跌破地板；在地板上緣再往上 3% 以內＝測試地板；更上面＝地板上方。這只是告訴你「現在在哪」，不是訊號；正式訊號還是等收盤後確認才算。</p>
+<p><b>每天收盤後算一次</b>：地板（成交量分佈）、買權牆、隱含波動度、偏斜、未平倉。選擇權未平倉交易所一天只結算一次，本來就沒有盤中版本。卡片右上角的大數字是收盤價。</p>
+<p><b>資料從哪來</b>：鉅亨網的公開報價，你的手機直接向它要，不經過 GitHub。只有正規交易時段（台北時間晚上 10:30 到早上 5:00，美國夏令時間各早一小時），不含盤前盤後。每檔最右邊寫成交時間（美東＋台北），跟現在時間比就知道延遲多少。</p><p class="lvt"></p></div></details></div>
+    <div class="stripe"></div>
 </header>
 <div class="navwrap"><nav>{{NAV}}</nav></div>
 <main><div class="sbox" id="sbox"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="5.2"/><path d="m11 11 3.6 3.6" stroke-linecap="round"/></svg><input id="q" type="search" inputmode="search" autocomplete="off" placeholder="搜尋：代號或名稱，例如 GOOG、輝達" aria-label="搜尋個股"><button class="clr" id="qclr" aria-label="清除">×</button></div><div id="sres"></div>{{BODY}}<p class="foot">每個美股交易日收盤後更新（台北時間早上）・分析結果，不是投資建議</p></main>
@@ -385,5 +420,6 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
   top.onclick=function(){window.scrollTo({top:0,behavior:'smooth'})};
 })();
 </script>
+<script src="live.js" defer></script>
 </body>
 </html>

@@ -938,7 +938,8 @@ def card(s, i):
     return f'''<article class="card stock {cls}" id="{s["sym"].replace("/", "")}" data-code="{E(s["sym"])}" data-name="{E(s["zh"] + " " + s["name"])}">
 <div class="head"><div class="no">{i}</div><div class="nm"><h3>{E(s["zh"])} <em>{E(s["sym"])}</em></h3>
 <div class="ind"><span class="state {cls}">{stt}</span><span>市值 {big(s["cap"])} 美元・{E(s["en"])}</span></div></div>
-<div class="px"><div class="dd">{money(s["price"])}</div><div class="p {tone(s["chg"])}">{s["chg"]:+.2f}%・距一年高點 {s["dd"]:+.1f}%</div></div></div>
+<div class="px"><div class="dd">{money(s["price"])}</div><div class="p {tone(s["chg"])}">收盤 {s["chg"]:+.2f}%・距一年高點 {s["dd"]:+.1f}%</div></div></div>
+<div class="lv" data-lv="USS:{E(s["sym"])}:STOCK"{f' data-flo="{f["lo"]}" data-fhi="{f["hi"]}"' if f else ""}{f' data-cw="{o["call_wall"]}"' if o.get("call_wall") else ""}>即時報價載入中…</div>
 <div class="chips">{chips}</div>{no_opt}
 {detail(s)}</article>'''
 
@@ -968,7 +969,7 @@ def overview(stocks, mkt, sig):
         lo = min(f["lo"], s["price"]) * 0.97
         hi = max(o.get("call_wall") or s["price"] * 1.08, s["price"] * 1.04) * 1.03
         P = lambda v: max(0, min(100, (v - lo) / (hi - lo) * 100))
-        bars += (f'<div class="gb"><a href="#{s["sym"].replace("/", "")}" data-go="stocks" data-to="{s["sym"].replace("/", "")}">{E(s["sym"])}</a><div class="tr">'
+        bars += (f'<div class="gb"><a href="#{s["sym"].replace("/", "")}" data-go="stocks" data-to="{s["sym"].replace("/", "")}">{E(s["sym"])}</a><div class="tr" data-lv="USS:{E(s["sym"])}:STOCK" data-lo="{lo:.4f}" data-hi="{hi:.4f}">'
                  f'<i class="fz" style="left:{P(f["lo"]):.1f}%;width:{max(1.5, P(f["hi"]) - P(f["lo"])):.1f}%"></i>'
                  + (f'<i class="cw" style="left:{P(o["call_wall"]):.1f}%"></i>' if o.get("call_wall") else "")
                  + f'<i class="pt {status(s)[1]}" style="left:{P(s["price"]):.1f}%"></i></div></div>')
@@ -985,7 +986,7 @@ def overview(stocks, mkt, sig):
         lines.append("今天是第一天紀錄，未平倉、偏斜的「變化」從下一個交易日開始會出現。")
     return f'''<section id="overview">
 <div class="card ov"><h2>今天重點</h2><p class="note2">{"<br>".join(lines)}</p>
-<h3 class="sub3">現價離地板多遠</h3><p class="note2">每一條是一檔股票：<b style="color:var(--copper)">銅色帶</b>是第一道地板，圓點是現在的價格，細直線是上方買權未平倉最多的價位（壓力）。點代號看完整分析。</p>
+<h3 class="sub3">現價離地板多遠</h3><p class="note2">每一條是一檔股票：<b style="color:var(--copper)">銅色帶</b>是第一道地板，實心圓點是收盤價、<b>空心圈是即時價</b>（開盤時會跟著動），細直線是上方買權未平倉最多的價位（壓力）。點代號看完整分析。</p>
 <div class="gauge">{bars}</div></div>
 <div class="card ov"><h2>十檔一覽</h2><div class="tw"><table class="ind-t us"><tr><th>股票・收盤</th><th>距地板</th><th>IV30<small>變化</small></th><th>偏斜<small>變化</small></th><th>未平倉<small>變化</small></th></tr>{rows}</table></div>
 <p class="note2" style="margin-top:10px">IV30＝30 天隱含波動度（選擇權認為未來一個月會晃多大）。偏斜＝下跌保險比上漲押注貴多少，<b>升高代表大家在怕跌</b>。未平倉＝還沒結清的選擇權口數。</p></div>

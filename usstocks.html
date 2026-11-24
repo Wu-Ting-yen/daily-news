@@ -302,6 +302,7 @@ details.full{border-top:1px solid var(--line)}
 .gb .fz{background:linear-gradient(90deg,var(--copper2),var(--copper));opacity:.55;border-radius:4px}
 .gb .cw{width:2px;background:#a5574a;opacity:.8}
 .gb .pt{width:12px;height:12px;top:1px;margin-left:-6px;border-radius:50%;border:2px solid var(--card);box-shadow:0 1px 4px #0003}
+.gb .tr i.lvpt{width:12px;height:12px;top:1px;margin-left:-6px;border-radius:50%;border:2px solid var(--fogdeep);background:transparent;box-shadow:0 0 0 2px var(--card);transition:left .6s ease}
 .gb .pt.good{background:var(--fogdeep)}.gb .pt.mid{background:var(--copper)}.gb .pt.bad{background:#a5574a}
 .tw{overflow-x:auto;margin:0 -4px}
 .ind-t.us{font-size:13px}
@@ -322,6 +323,35 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 .ostats details.how2 b,details.how2 b{display:inline;font:700 12.5px "Noto Sans TC",sans-serif;color:var(--copper)}
 .ostats>div:has(details.how2[open]){grid-column:1/-1}
 .src{font-size:12px;color:var(--sub);margin-top:10px}
+/* 即時報價 */
+.lvbar{padding:0 16px 12px}
+.lvrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:8px 12px;border-radius:14px;background:#ffffff70;border:1px solid #ffffffa0;backdrop-filter:blur(6px);font-size:12.5px;color:var(--sub);min-height:38px}
+@media (prefers-color-scheme:dark){.lvrow{background:#ffffff0c;border-color:#ffffff14}}
+.lvs{display:inline-flex;align-items:center;gap:6px;color:var(--sub)}
+.lvs i,.lvtag i{width:7px;height:7px;border-radius:50%;background:var(--sub);opacity:.6;flex:none}
+.lvs.on{color:var(--fogdeep);font-weight:500}.lvs.on i,.lv-open .lv.ok .lvtag i{background:#b0453a;opacity:1;animation:lvp 1.6s ease-in-out infinite}
+.lvs.off{color:#a5574a}
+@keyframes lvp{0%,100%{box-shadow:0 0 0 0 #b0453a55}50%{box-shadow:0 0 0 4px #b0453a00}}
+.lvi{display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap}
+.lvi em{font-style:normal;color:var(--sub)}
+.lvi b{font:600 17px/1 "Cormorant Garamond",serif;color:var(--text)}
+.lvi i{font-style:normal;font-size:12px}
+.lvhow{margin:6px 4px 0;font-size:12.5px;color:var(--sub)}
+.lvhow{border-top:0}.lvhow summary{cursor:pointer;color:var(--fogdeep);list-style:none;display:inline-flex;padding:2px 4px;font-size:12.5px}.lvhow summary::after{content:none}
+.lvhow summary::-webkit-details-marker{display:none}
+.lvhow summary::before{content:"ⓘ ";}
+.lvhow>div{margin-top:6px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);line-height:1.75;color:var(--text)}
+.lvhow p{margin:0 0 6px}.lvhow b{color:var(--copper)}.lvhow .lvt{color:var(--sub);margin:0}
+.lv{margin:2px 18px 12px;padding:8px 12px;border-radius:12px;background:linear-gradient(90deg,#8ea3b61f,#8ea3b608);border:1px solid #8ea3b633;font-size:12px;color:var(--sub);min-height:20px}
+.lv:not(.ok){color:var(--sub);opacity:.7}
+.lvm{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.lvtag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;letter-spacing:.1em;color:var(--fogdeep);font-weight:500}
+.lvm b{font:600 22px/1 "Cormorant Garamond",serif;color:var(--text)}
+.lvm span:not(.lvtag){font-size:13px}
+.lvx{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:4px}
+.lvx .tm{margin-left:auto;font-variant-numeric:tabular-nums}
+.lvx u{text-decoration:none;color:#fff;border-radius:6px;padding:0 6px;font-size:11.5px}
+.lvx u.good{background:var(--fogdeep)}.lvx u.mid{background:var(--copper)}.lvx u.bad{background:#a5574a}
 </style>
 </head>
 <body>
@@ -331,19 +361,25 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
     <div class="upd">UPDATED<br>11/24 14:08</div>
   </div>
   <div class="mk"><div><span class="lbl">S&P 500</span><b>7,237</b><small class="up">+4.73%</small></div><div><span class="lbl">那斯達克</span><b>24,090</b><small class="up">+6.51%</small></div><div><span class="lbl">VIX 恐慌指數</span><b>26.62</b><small class="up">-25.83%</small></div></div>
-  <div class="stripe"></div>
+  <div class="lvbar" id="lvbar" data-kind="us" data-syms="GI:INX:INDEX|S&amp;P 500,GI:IXIC:INDEX|那斯達克,GI:SOX:INDEX|費半"><div class="lvrow"><span class="lvs"><i></i>載入即時報價…</span></div>
+  <details class="lvhow"><summary>哪些數字是即時的？怎麼算？</summary><div><p><b>即時（開盤時每 15 秒）</b>：每檔卡片上標「即時」的那一行：現價、漲跌、成交量、盤中位置、距買權牆；上面這排的 S&amp;P 500、那斯達克、費半也是。總覽「現價離地板多遠」圖上的<b>空心圈</b>是即時價，實心圓點是收盤價。</p>
+<p><b>盤中位置怎麼判斷</b>：跟每天收盤後用的規則一樣，只是把收盤價換成現價：低於地板下緣＝跌破地板；在地板上緣再往上 3% 以內＝測試地板；更上面＝地板上方。這只是告訴你「現在在哪」，不是訊號；正式訊號還是等收盤後確認才算。</p>
+<p><b>每天收盤後算一次</b>：地板（成交量分佈）、買權牆、隱含波動度、偏斜、未平倉。選擇權未平倉交易所一天只結算一次，本來就沒有盤中版本。卡片右上角的大數字是收盤價。</p>
+<p><b>資料從哪來</b>：鉅亨網的公開報價，你的手機直接向它要，不經過 GitHub。只有正規交易時段（台北時間晚上 10:30 到早上 5:00，美國夏令時間各早一小時），不含盤前盤後。每檔最右邊寫成交時間（美東＋台北），跟現在時間比就知道延遲多少。</p><p class="lvt"></p></div></details></div>
+    <div class="stripe"></div>
 </header>
 <div class="navwrap"><nav><a class="navlink back" href="./">← 新聞</a><button data-tab="overview">總覽</button><button data-tab="stocks">個股<b>10</b></button><button data-tab="signals">訊號紀錄<b>0</b></button><button data-tab="how">怎麼判斷</button></nav></div>
 <main><div class="sbox" id="sbox"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="5.2"/><path d="m11 11 3.6 3.6" stroke-linecap="round"/></svg><input id="q" type="search" inputmode="search" autocomplete="off" placeholder="搜尋：代號或名稱，例如 GOOG、輝達" aria-label="搜尋個股"><button class="clr" id="qclr" aria-label="清除">×</button></div><div id="sres"></div><section id="overview">
 <div class="card ov"><h2>今天重點</h2><p class="note2">10 檔裡 <b>2</b> 檔正在測試地板、<b>6</b> 檔跌破地板。<br>短天期隱含波動度倒掛（市場在為近期風險付高價）：輝達、台積電 ADR、博通。</p>
-<h3 class="sub3">現價離地板多遠</h3><p class="note2">每一條是一檔股票：<b style="color:var(--copper)">銅色帶</b>是第一道地板，圓點是現在的價格，細直線是上方買權未平倉最多的價位（壓力）。點代號看完整分析。</p>
-<div class="gauge"><div class="gb"><a href="#AAPL" data-go="stocks" data-to="AAPL">AAPL</a><div class="tr"><i class="fz" style="left:17.4%;width:4.2%"></i><i class="cw" style="left:80.7%"></i><i class="pt mid" style="left:28.5%"></i></div></div><div class="gb"><a href="#MSFT" data-go="stocks" data-to="MSFT">MSFT</a><div class="tr"><i class="fz" style="left:41.3%;width:4.4%"></i><i class="cw" style="left:84.9%"></i><i class="pt bad" style="left:12.9%"></i></div></div><div class="gb"><a href="#GOOG" data-go="stocks" data-to="GOOG">GOOG</a><div class="tr"><i class="fz" style="left:23.4%;width:13.2%"></i><i class="cw" style="left:76.2%"></i><i class="pt bad" style="left:22.2%"></i></div></div><div class="gb"><a href="#NVDA" data-go="stocks" data-to="NVDA">NVDA</a><div class="tr"><i class="fz" style="left:17.6%;width:18.9%"></i><i class="cw" style="left:74.3%"></i><i class="pt good" style="left:55.6%"></i></div></div><div class="gb"><a href="#AMZN" data-go="stocks" data-to="AMZN">AMZN</a><div class="tr"><i class="fz" style="left:11.8%;width:3.9%"></i><i class="cw" style="left:86.0%"></i><i class="pt mid" style="left:16.3%"></i></div></div><div class="gb"><a href="#SPCX" data-go="stocks" data-to="SPCX">SPCX</a><div class="tr"><i class="fz" style="left:72.2%;width:9.9%"></i><i class="cw" style="left:82.1%"></i><i class="pt bad" style="left:15.9%"></i></div></div><div class="gb"><a href="#TSM" data-go="stocks" data-to="TSM">TSM</a><div class="tr"><i class="fz" style="left:71.7%;width:12.5%"></i><i class="cw" style="left:84.2%"></i><i class="pt bad" style="left:13.7%"></i></div></div><div class="gb"><a href="#AVGO" data-go="stocks" data-to="AVGO">AVGO</a><div class="tr"><i class="fz" style="left:90.2%;width:8.9%"></i><i class="cw" style="left:81.4%"></i><i class="pt bad" style="left:16.7%"></i></div></div><div class="gb"><a href="#META" data-go="stocks" data-to="META">META</a><div class="tr"><i class="fz" style="left:28.5%;width:7.1%"></i><i class="cw" style="left:85.1%"></i><i class="pt bad" style="left:12.7%"></i></div></div><div class="gb"><a href="#TSLA" data-go="stocks" data-to="TSLA">TSLA</a><div class="tr"><i class="fz" style="left:18.6%;width:8.5%"></i><i class="cw" style="left:78.1%"></i><i class="pt good" style="left:53.4%"></i></div></div></div></div>
+<h3 class="sub3">現價離地板多遠</h3><p class="note2">每一條是一檔股票：<b style="color:var(--copper)">銅色帶</b>是第一道地板，實心圓點是收盤價、<b>空心圈是即時價</b>（開盤時會跟著動），細直線是上方買權未平倉最多的價位（壓力）。點代號看完整分析。</p>
+<div class="gauge"><div class="gb"><a href="#AAPL" data-go="stocks" data-to="AAPL">AAPL</a><div class="tr" data-lv="USS:AAPL:STOCK" data-lo="332.2250" data-hi="391.4000"><i class="fz" style="left:17.4%;width:4.2%"></i><i class="cw" style="left:80.7%"></i><i class="pt mid" style="left:28.5%"></i></div></div><div class="gb"><a href="#MSFT" data-go="stocks" data-to="MSFT">MSFT</a><div class="tr" data-lv="USS:MSFT:STOCK" data-lo="477.7250" data-hi="592.2500"><i class="fz" style="left:41.3%;width:4.4%"></i><i class="cw" style="left:84.9%"></i><i class="pt bad" style="left:12.9%"></i></div></div><div class="gb"><a href="#GOOG" data-go="stocks" data-to="GOOG">GOOG</a><div class="tr" data-lv="USS:GOOG:STOCK" data-lo="271.1441" data-hi="309.0000"><i class="fz" style="left:23.4%;width:13.2%"></i><i class="cw" style="left:76.2%"></i><i class="pt bad" style="left:22.2%"></i></div></div><div class="gb"><a href="#NVDA" data-go="stocks" data-to="NVDA">NVDA</a><div class="tr" data-lv="USS:NVDA:STOCK" data-lo="150.3500" data-hi="176.8016"><i class="fz" style="left:17.6%;width:18.9%"></i><i class="cw" style="left:74.3%"></i><i class="pt good" style="left:55.6%"></i></div></div><div class="gb"><a href="#AMZN" data-go="stocks" data-to="AMZN">AMZN</a><div class="tr" data-lv="USS:AMZN:STOCK" data-lo="244.9250" data-hi="309.0000"><i class="fz" style="left:11.8%;width:3.9%"></i><i class="cw" style="left:86.0%"></i><i class="pt mid" style="left:16.3%"></i></div></div><div class="gb"><a href="#SPCX" data-go="stocks" data-to="SPCX">SPCX</a><div class="tr" data-lv="USS:SPCX:STOCK" data-lo="129.3495" data-hi="154.5000"><i class="fz" style="left:72.2%;width:9.9%"></i><i class="cw" style="left:82.1%"></i><i class="pt bad" style="left:15.9%"></i></div></div><div class="gb"><a href="#TSM" data-go="stocks" data-to="TSM">TSM</a><div class="tr" data-lv="USS:TSM:STOCK" data-lo="352.6920" data-hi="432.6000"><i class="fz" style="left:71.7%;width:12.5%"></i><i class="cw" style="left:84.2%"></i><i class="pt bad" style="left:13.7%"></i></div></div><div class="gb"><a href="#AVGO" data-go="stocks" data-to="AVGO">AVGO</a><div class="tr" data-lv="USS:AVGO:STOCK" data-lo="304.1435" data-hi="360.5000"><i class="fz" style="left:90.2%;width:8.9%"></i><i class="cw" style="left:81.4%"></i><i class="pt bad" style="left:16.7%"></i></div></div><div class="gb"><a href="#META" data-go="stocks" data-to="META">META</a><div class="tr" data-lv="USS:META:STOCK" data-lo="579.6720" data-hi="721.0000"><i class="fz" style="left:28.5%;width:7.1%"></i><i class="cw" style="left:85.1%"></i><i class="pt bad" style="left:12.7%"></i></div></div><div class="gb"><a href="#TSLA" data-go="stocks" data-to="TSLA">TSLA</a><div class="tr" data-lv="USS:TSLA:STOCK" data-lo="354.0500" data-hi="412.9048"><i class="fz" style="left:18.6%;width:8.5%"></i><i class="cw" style="left:78.1%"></i><i class="pt good" style="left:53.4%"></i></div></div></div></div>
 <div class="card ov"><h2>十檔一覽</h2><div class="tw"><table class="ind-t us"><tr><th>股票・收盤</th><th>距地板</th><th>IV30<small>變化</small></th><th>偏斜<small>變化</small></th><th>未平倉<small>變化</small></th></tr><tr><th><a href="#AAPL" data-go="stocks" data-to="AAPL">蘋果 <em>AAPL</em></a><small>$349.08 <span class="up">+1.9%</span></small></th><td class="mid">1.2%<small>測試地板</small></td><td>25%<small>-5.4</small></td><td>5.1<small class="up">-4.0</small></td><td>503.2 萬<small>-13.2%</small></td></tr><tr><th><a href="#MSFT" data-go="stocks" data-to="MSFT">微軟 <em>MSFT</em></a><small>$492.50 <span class="up">+1.6%</span></small></th><td class="bad">−6.2%<small>跌破地板</small></td><td>34%<small>-7.7</small></td><td>5.6<small class="up">-7.6</small></td><td>332.0 萬<small>-13.7%</small></td></tr><tr><th><a href="#GOOG" data-go="stocks" data-to="GOOG">Google <em>GOOG</em></a><small>$279.53 <span class="up">+5.9%</span></small></th><td class="bad">−0.2%<small>跌破地板</small></td><td>38%<small>-8.2</small></td><td>4.7<small class="up">-8.2</small></td><td>182.3 萬<small>-11.0%</small></td></tr><tr><th><a href="#NVDA" data-go="stocks" data-to="NVDA">輝達 <em>NVDA</em></a><small>$165.05 <span class="up">+31.5%</span></small></th><td class="good">3.2%<small>地板上方</small></td><td>62%<small>-16.7</small></td><td>9.3<small class="up">-8.0</small></td><td>1,834 萬<small>-7.6%</small></td></tr><tr><th><a href="#AMZN" data-go="stocks" data-to="AMZN">亞馬遜 <em>AMZN</em></a><small>$255.39 <span class="up">+3.5%</span></small></th><td class="mid">0.2%<small>測試地板</small></td><td>38%<small>-8.2</small></td><td>4.5<small class="up">-7.7</small></td><td>427.2 萬<small>-13.5%</small></td></tr><tr><th><a href="#SPCX" data-go="stocks" data-to="SPCX">SpaceX <em>SPCX</em></a><small>$133.35 <span class="up">+4.3%</span></small></th><td class="bad">−9.6%<small>跌破地板</small></td><td>58%<small>-10.9</small></td><td>10.8<small class="up">-6.3</small></td><td>507.0 萬<small>-14.3%</small></td></tr><tr><th><a href="#TSM" data-go="stocks" data-to="TSM">台積電 ADR <em>TSM</em></a><small>$363.60 <span class="up">+14.1%</span></small></th><td class="bad">−11.3%<small>跌破地板</small></td><td>54%<small>-12.8</small></td><td>10.2<small class="up">-9.1</small></td><td>189.9 萬<small>-6.6%</small></td></tr><tr><th><a href="#AVGO" data-go="stocks" data-to="AVGO">博通 <em>AVGO</em></a><small>$313.55 <span class="up">+3.0%</span></small></th><td class="bad">−11.7%<small>跌破地板</small></td><td>68%<small>-13.3</small></td><td>11.4<small class="up">-8.5</small></td><td>229.9 萬<small>-13.2%</small></td></tr><tr><th><a href="#META" data-go="stocks" data-to="META">Meta <em>META</em></a><small>$597.60 <span class="up">+6.5%</span></small></th><td class="bad">−3.6%<small>跌破地板</small></td><td>44%<small>-8.3</small></td><td>7.2<small class="up">-4.7</small></td><td>256.5 萬<small>-17.4%</small></td></tr><tr><th><a href="#TSLA" data-go="stocks" data-to="TSLA">特斯拉 <em>TSLA</em></a><small>$385.46 <span class="up">+11.5%</span></small></th><td class="good">4.2%<small>地板上方</small></td><td>50%<small>-12.6</small></td><td>8.2<small class="up">-8.3</small></td><td>513.2 萬<small>-12.8%</small></td></tr></table></div>
 <p class="note2" style="margin-top:10px">IV30＝30 天隱含波動度（選擇權認為未來一個月會晃多大）。偏斜＝下跌保險比上漲押注貴多少，<b>升高代表大家在怕跌</b>。未平倉＝還沒結清的選擇權口數。</p></div>
 </section><section id="stocks"><p class="lead">依市值排序。每檔先看「地板」和現在的狀態，點「完整分析」看成交量分佈、選擇權各履約價、隱含波動度。</p><article class="card stock mid" id="AAPL" data-code="AAPL" data-name="蘋果 Apple Inc">
 <div class="head"><div class="no">1</div><div class="nm"><h3>蘋果 <em>AAPL</em></h3>
 <div class="ind"><span class="state mid">測試地板</span><span>市值 5.0 兆 美元・Apple Inc</span></div></div>
-<div class="px"><div class="dd">$349.08</div><div class="p up">+1.90%・距一年高點 -2.0%</div></div></div>
+<div class="px"><div class="dd">$349.08</div><div class="p up">收盤 +1.90%・距一年高點 -2.0%</div></div></div>
+<div class="lv" data-lv="USS:AAPL:STOCK" data-flo="342.5" data-fhi="345.0" data-cw="380.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$342–345</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$300</b></div><div class="chip"><span>買權未平倉最多</span><b>$380</b></div><div class="chip"><span>最大痛點 12/18</span><b>$315</b></div><div class="chip"><span>賣權/買權成交</span><b>101%</b></div><div class="chip"><span>31 天預期波動</span><b>±5.8%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$342–345</span><span class="st">★★☆</span><span class="ds">距 1.2%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div><div class="fr"><b>下一道</b><span class="rg">$332–335</span><span class="st">★★☆</span><span class="ds">距 4.2%</span><small>下一個成交山峰（近 3 個月成交密集）、賣權未平倉偏多、今天賣權最熱 $330</small></div></div>
@@ -359,7 +395,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock bad" id="MSFT" data-code="MSFT" data-name="微軟 Microsoft Corporation">
 <div class="head"><div class="no">2</div><div class="nm"><h3>微軟 <em>MSFT</em></h3>
 <div class="ind"><span class="state bad">跌破地板</span><span>市值 3.6 兆 美元・Microsoft Corporation</span></div></div>
-<div class="px"><div class="dd">$492.50</div><div class="p up">+1.65%・距一年高點 -11.4%</div></div></div>
+<div class="px"><div class="dd">$492.50</div><div class="p up">收盤 +1.65%・距一年高點 -11.4%</div></div></div>
+<div class="lv" data-lv="USS:MSFT:STOCK" data-flo="525" data-fhi="530" data-cw="575.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$525–530</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$450</b></div><div class="chip"><span>買權未平倉最多</span><b>$575</b></div><div class="chip"><span>最大痛點 12/18</span><b>$475</b></div><div class="chip"><span>賣權/買權成交</span><b>61%</b></div><div class="chip"><span>31 天預期波動</span><b>±8.0%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$525–530</span><span class="st">★★☆</span><span class="ds">已跌破 -6.2%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div><div class="fr"><b>下一道</b><span class="rg">$400–410</span><span class="st">★☆☆</span><span class="ds">距 20.1%</span><small>下一個成交山峰（一年成交密集）、賣權未平倉偏多</small></div></div>
@@ -375,7 +412,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock bad" id="GOOG" data-code="GOOG" data-name="Google Alphabet Inc">
 <div class="head"><div class="no">3</div><div class="nm"><h3>Google <em>GOOG</em></h3>
 <div class="ind"><span class="state bad">跌破地板</span><span>市值 3.2 兆 美元・Alphabet Inc</span></div></div>
-<div class="px"><div class="dd">$279.53</div><div class="p up">+5.88%・距一年高點 -29.9%</div></div></div>
+<div class="px"><div class="dd">$279.53</div><div class="p up">收盤 +5.88%・距一年高點 -29.9%</div></div></div>
+<div class="lv" data-lv="USS:GOOG:STOCK" data-flo="280" data-fhi="285" data-cw="300.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$280–285</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$250</b></div><div class="chip"><span>買權未平倉最多</span><b>$300</b></div><div class="chip"><span>最大痛點 12/18</span><b>$285</b></div><div class="chip"><span>賣權/買權成交</span><b>29%</b></div><div class="chip"><span>31 天預期波動</span><b>±8.6%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$280–285</span><span class="st">★★☆</span><span class="ds">已跌破 -0.2%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div></div>
@@ -391,7 +429,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock good" id="NVDA" data-code="NVDA" data-name="輝達 NVIDIA Corporation">
 <div class="head"><div class="no">4</div><div class="nm"><h3>輝達 <em>NVDA</em></h3>
 <div class="ind"><span class="state good">地板上方</span><span>市值 3.1 兆 美元・NVIDIA Corporation</span></div></div>
-<div class="px"><div class="dd">$165.05</div><div class="p up">+31.48%・距一年高點 -31.0%</div></div></div>
+<div class="px"><div class="dd">$165.05</div><div class="p up">收盤 +31.48%・距一年高點 -31.0%</div></div></div>
+<div class="lv" data-lv="USS:NVDA:STOCK" data-flo="155" data-fhi="160" data-cw="170.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$155–160</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$150</b></div><div class="chip"><span>買權未平倉最多</span><b>$170</b></div><div class="chip"><span>最大痛點 12/18</span><b>$164</b></div><div class="chip"><span>賣權/買權成交</span><b>60%</b></div><div class="chip"><span>31 天預期波動</span><b>±14.5%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$155–160</span><span class="st">★★☆</span><span class="ds">距 3.2%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div></div>
@@ -407,7 +446,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock mid" id="AMZN" data-code="AMZN" data-name="亞馬遜 Amazon.com Inc">
 <div class="head"><div class="no">5</div><div class="nm"><h3>亞馬遜 <em>AMZN</em></h3>
 <div class="ind"><span class="state mid">測試地板</span><span>市值 2.7 兆 美元・Amazon.com Inc</span></div></div>
-<div class="px"><div class="dd">$255.39</div><div class="p up">+3.47%・距一年高點 -10.1%</div></div></div>
+<div class="px"><div class="dd">$255.39</div><div class="p up">收盤 +3.47%・距一年高點 -10.1%</div></div></div>
+<div class="lv" data-lv="USS:AMZN:STOCK" data-flo="252.5" data-fhi="255.0" data-cw="300.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$252–255</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$220</b></div><div class="chip"><span>買權未平倉最多</span><b>$300</b></div><div class="chip"><span>最大痛點 12/18</span><b>$240</b></div><div class="chip"><span>賣權/買權成交</span><b>41%</b></div><div class="chip"><span>31 天預期波動</span><b>±8.8%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$252–255</span><span class="st">★★☆</span><span class="ds">距 0.2%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div><div class="fr"><b>下一道</b><span class="rg">$230–235</span><span class="st">★☆☆</span><span class="ds">距 8.7%</span><small>下一個成交山峰（一年成交密集）、賣權未平倉偏多</small></div></div>
@@ -423,7 +463,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock bad" id="SPCX" data-code="SPCX" data-name="SpaceX Space Exploration Technologies Corp">
 <div class="head"><div class="no">6</div><div class="nm"><h3>SpaceX <em>SPCX</em></h3>
 <div class="ind"><span class="state bad">跌破地板</span><span>市值 1.7 兆 美元・Space Exploration Technologies Corp</span></div></div>
-<div class="px"><div class="dd">$133.35</div><div class="p up">+4.35%・距一年高點 -36.9%</div></div></div>
+<div class="px"><div class="dd">$133.35</div><div class="p up">收盤 +4.35%・距一年高點 -36.9%</div></div></div>
+<div class="lv" data-lv="USS:SPCX:STOCK" data-flo="147.5" data-fhi="150.0" data-cw="150.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$148–150</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$120</b></div><div class="chip"><span>買權未平倉最多</span><b>$150</b></div><div class="chip"><span>最大痛點 12/18</span><b>$145</b></div><div class="chip"><span>賣權/買權成交</span><b>42%</b></div><div class="chip"><span>31 天預期波動</span><b>±13.3%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$148–150</span><span class="st">★★☆</span><span class="ds">已跌破 -9.6%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div></div>
@@ -439,7 +480,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock bad" id="TSM" data-code="TSM" data-name="台積電 ADR Taiwan Semiconductor Manufacturing Company Ltd">
 <div class="head"><div class="no">7</div><div class="nm"><h3>台積電 ADR <em>TSM</em></h3>
 <div class="ind"><span class="state bad">跌破地板</span><span>市值 1.7 兆 美元・Taiwan Semiconductor Manufacturing Company Ltd</span></div></div>
-<div class="px"><div class="dd">$363.60</div><div class="p up">+14.08%・距一年高點 -25.2%</div></div></div>
+<div class="px"><div class="dd">$363.60</div><div class="p up">收盤 +14.08%・距一年高點 -25.2%</div></div></div>
+<div class="lv" data-lv="USS:TSM:STOCK" data-flo="410" data-fhi="420" data-cw="420.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$410–420</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$300</b></div><div class="chip"><span>買權未平倉最多</span><b>$420</b></div><div class="chip"><span>最大痛點 12/18</span><b>$400</b></div><div class="chip"><span>賣權/買權成交</span><b>34%</b></div><div class="chip"><span>31 天預期波動</span><b>±12.3%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$410–420</span><span class="st">★★☆</span><span class="ds">已跌破 -11.3%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div><div class="fr"><b>下一道</b><span class="rg">$330–340</span><span class="st">★☆☆</span><span class="ds">距 6.9%</span><small>下一個成交山峰（一年成交密集）、賣權未平倉偏多</small></div></div>
@@ -455,7 +497,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock bad" id="AVGO" data-code="AVGO" data-name="博通 Broadcom Inc">
 <div class="head"><div class="no">8</div><div class="nm"><h3>博通 <em>AVGO</em></h3>
 <div class="ind"><span class="state bad">跌破地板</span><span>市值 1.5 兆 美元・Broadcom Inc</span></div></div>
-<div class="px"><div class="dd">$313.55</div><div class="p up">+3.00%・距一年高點 -34.9%</div></div></div>
+<div class="px"><div class="dd">$313.55</div><div class="p up">收盤 +3.00%・距一年高點 -34.9%</div></div></div>
+<div class="lv" data-lv="USS:AVGO:STOCK" data-flo="355" data-fhi="360" data-cw="350.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$355–360</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$300</b></div><div class="chip"><span>買權未平倉最多</span><b>$350</b></div><div class="chip"><span>最大痛點 12/18</span><b>$340</b></div><div class="chip"><span>賣權/買權成交</span><b>71%</b></div><div class="chip"><span>31 天預期波動</span><b>±15.6%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$355–360</span><span class="st">★★☆</span><span class="ds">已跌破 -11.7%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div></div>
@@ -471,7 +514,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock bad" id="META" data-code="META" data-name="Meta Meta Platforms Inc">
 <div class="head"><div class="no">9</div><div class="nm"><h3>Meta <em>META</em></h3>
 <div class="ind"><span class="state bad">跌破地板</span><span>市值 1.4 兆 美元・Meta Platforms Inc</span></div></div>
-<div class="px"><div class="dd">$597.60</div><div class="p up">+6.55%・距一年高點 -23.1%</div></div></div>
+<div class="px"><div class="dd">$597.60</div><div class="p up">收盤 +6.55%・距一年高點 -23.1%</div></div></div>
+<div class="lv" data-lv="USS:META:STOCK" data-flo="620" data-fhi="630" data-cw="700.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$620–630</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$500</b></div><div class="chip"><span>買權未平倉最多</span><b>$700</b></div><div class="chip"><span>最大痛點 12/18</span><b>$625</b></div><div class="chip"><span>賣權/買權成交</span><b>52%</b></div><div class="chip"><span>31 天預期波動</span><b>±10.2%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$620–630</span><span class="st">★★☆</span><span class="ds">已跌破 -3.6%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div></div>
@@ -487,7 +531,8 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
 </div></details></article><article class="card stock good" id="TSLA" data-code="TSLA" data-name="特斯拉 Tesla Inc">
 <div class="head"><div class="no">10</div><div class="nm"><h3>特斯拉 <em>TSLA</em></h3>
 <div class="ind"><span class="state good">地板上方</span><span>市值 1.4 兆 美元・Tesla Inc</span></div></div>
-<div class="px"><div class="dd">$385.46</div><div class="p up">+11.46%・距一年高點 -21.3%</div></div></div>
+<div class="px"><div class="dd">$385.46</div><div class="p up">收盤 +11.46%・距一年高點 -21.3%</div></div></div>
+<div class="lv" data-lv="USS:TSLA:STOCK" data-flo="365" data-fhi="370" data-cw="400.0">即時報價載入中…</div>
 <div class="chips"><div class="chip"><span>第一道地板</span><b>$365–370</b><small> ★★</small></div><div class="chip"><span>賣權未平倉最多</span><b>$350</b></div><div class="chip"><span>買權未平倉最多</span><b>$400</b></div><div class="chip"><span>最大痛點 12/18</span><b>$355</b></div><div class="chip"><span>賣權/買權成交</span><b>63%</b></div><div class="chip"><span>31 天預期波動</span><b>±11.5%</b></div></div>
 <details class="full"><summary>完整分析</summary><div class="dt">
 <h4>地板在哪裡</h4><div class="floors"><div class="fr first"><b>地板</b><span class="rg">$365–370</span><span class="st">★★☆</span><span class="ds">距 4.2%</span><small>近 3 個月成交量最多、賣權未平倉偏多</small></div></div>
@@ -571,5 +616,6 @@ details.how2 p{font-size:12.5px;line-height:1.7;color:var(--text);margin:4px 0 6
   top.onclick=function(){window.scrollTo({top:0,behavior:'smooth'})};
 })();
 </script>
+<script src="live.js" defer></script>
 </body>
 </html>
