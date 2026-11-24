@@ -1,0 +1,25 @@
+name: probe-live
+on:
+  push:
+    branches: [claude/project-thread-ism3jz]
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          O="Origin: https://wu-ting-yen.github.io"; UA="User-Agent: Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+          for u in \
+            "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_2330.tw|otc_8069.tw&json=1&delay=0" \
+            "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1m&range=1d" \
+            "https://query2.finance.yahoo.com/v8/finance/chart/2330.TW?interval=1m&range=1d" \
+            "https://query1.finance.yahoo.com/v7/finance/spark?symbols=AAPL,2330.TW&range=1d&interval=5m" \
+            "https://api.nasdaq.com/api/quote/AAPL/info?assetclass=stocks" \
+            "https://api.nasdaq.com/api/quote/watchlist?symbol=aapl%7cstocks&symbol=msft%7cstocks" \
+            "https://tw.stock.yahoo.com/_td-stock/api/resource/StockServices.stockList;fields=avgPrice%2Corderbook;symbols=2330.TW" \
+            "https://www.cnyes.com/api/v1/quote/TWS:2330:STOCK" \
+            "https://ws.api.cnyes.com/ws/api/v1/quote/quotes/TWS:2330:STOCK,USS:AAPL:STOCK?column=G" \
+            "https://stooq.com/q/l/?s=aapl.us&f=sd2t2ohlcv&h&e=json" \
+            "https://scanner.tradingview.com/america/scan" \
+            "https://www.google.com/finance/quote/AAPL:NASDAQ" \
+            ; do echo "=========== $u"; curl -s -m 15 -D - -o b.txt -H "$O" -H "$UA" "$u" | grep -iE "^HTTP|access-control|content-type"; head -c 400 b.txt; echo; done
+          echo "=== preflight-free check done"
