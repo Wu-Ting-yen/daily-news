@@ -26,6 +26,24 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PAGE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: python update.py
+      - name: 外資持股頁（當天資料還沒齊就再抓一次）
+        continue-on-error: true
+        timeout-minutes: 8
+        run: |
+          python - <<'PY' && python foreign.py || echo "外資持股：今天不用再抓"
+          import datetime as dt, json, sys
+          now = dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+          # 下午 3 點到半夜看今天；半夜到早上 9 點補看前一個交易日（持股比例有時很晚才公布）
+          day = now.date() if now.hour >= 15 else now.date() - dt.timedelta(days=1)
+          while day.weekday() > 4:
+              day -= dt.timedelta(days=1)
+          if 9 <= now.hour < 15 or (now.hour >= 15 and now.weekday() > 4):
+              sys.exit(1)
+          d = day.isoformat()
+          daily = {r["d"] for r in json.load(open("data/foreign/daily.json"))}
+          flow = json.load(open("data/foreign/flow.json"))
+          sys.exit(0 if d not in daily or (flow.get(d) or {}).get("otc") is None else 1)
+          PY
       - name: 儲存
         run: |
           git config user.name "news-bot"
