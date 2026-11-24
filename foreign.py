@@ -197,6 +197,17 @@ def net_day(d):
     return {"tw": round(tw / 1e8, 2), "otc": round(otc / 1e8, 2) if otc is not None else None}
 
 
+def recent_weekdays(n=10):
+    """最近 n 天的平日：外資買賣超下午 3 點就公布，不用等外資持股（晚上才出）"""
+    now = dt.datetime.now(TZ)
+    out = []
+    for i in range(n):
+        d = (now - dt.timedelta(days=i)).date()
+        if d.weekday() < 5 and (i or now.hour >= 15):
+            out.append(d.isoformat())
+    return out
+
+
 def update_flow(days):
     fl = load(FLOW, {})
     new = 0
@@ -306,7 +317,7 @@ if __name__ == "__main__":
     print("外匯存底…")
     res = update_reserves()
     print("外資買賣超…")
-    flow = update_flow([r["d"] for r in rows])
+    flow = update_flow(sorted({r["d"] for r in rows} | set(recent_weekdays())))
     print("外匯成交量…")
     vol = update_fxvol()
     import foreign_page
