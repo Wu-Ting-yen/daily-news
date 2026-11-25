@@ -51,4 +51,10 @@ jobs:
           git add -A
           git diff --cached --quiet && exit 0
           git commit -qm "更新新聞 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
-          for i in 1 2 3; do git push -q && break || git pull -q --rebase; done
+          # 別的排程（台股分析、外資持股）也會改 foreign.html；撞到時以這次剛產生的版本為準，最多重試 5 次
+          for i in 1 2 3 4 5; do
+            git pull --rebase -X theirs -q && git push -q && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep 5
+          done
+          exit 1
