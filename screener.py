@@ -1062,8 +1062,9 @@ def card(s, i=None):
     return f'''<article class="card stock {s["cat"]}" data-code="{s["code"]}" data-name="{e(s["name"])}">
   <a class="head" href="https://tw.stock.yahoo.com/quote/{s["code"]}.{s.get("mkt", "TW")}" target="_blank" rel="noopener">
     {rank}<div class="nm"><h3>{e(s["name"])} <em>{s["code"]}</em></h3><div class="ind">{e(s.get("industry", ""))}{flag}</div></div>
-    <div class="px"><div class="dd">{s["dd"]:+.1f}<small>%</small></div><div class="p">{s["price"]:,.2f}・距三個月高點</div></div>
+    <div class="px"><div class="dd">{s["dd"]:+.1f}<small>%</small></div><div class="p">收盤 {s["price"]:,.2f}・距三個月高點</div></div>
   </a>
+  <div class="lv" data-lv="TWS:{s["code"]}:STOCK" data-hi="{s.get("high") or s["price"] / (1 + s["dd"] / 100):.4f}">即時報價載入中…</div>
   <div class="sk">{spark_svg(s["spark"])}{badge}</div>
   <div class="chips">{chip_html}</div>
   {f'<p class="story">{e(s["story"])}</p>' if s.get("story") else ""}

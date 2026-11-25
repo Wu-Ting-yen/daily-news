@@ -292,6 +292,35 @@ ul.src a{color:var(--fogdeep)}
   box-shadow:0 6px 16px -6px var(--fogdeep);opacity:0;pointer-events:none;transition:.25s}
 #totop.show{opacity:1;pointer-events:auto}
 @media (max-width:380px){.mk b{font-size:22px}.dd{font-size:26px}}
+/* 即時報價 */
+.lvbar{padding:0 16px 12px}
+.lvrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:8px 12px;border-radius:14px;background:#ffffff70;border:1px solid #ffffffa0;backdrop-filter:blur(6px);font-size:12.5px;color:var(--sub);min-height:38px}
+@media (prefers-color-scheme:dark){.lvrow{background:#ffffff0c;border-color:#ffffff14}}
+.lvs{display:inline-flex;align-items:center;gap:6px;color:var(--sub)}
+.lvs i,.lvtag i{width:7px;height:7px;border-radius:50%;background:var(--sub);opacity:.6;flex:none}
+.lvs.on{color:var(--fogdeep);font-weight:500}.lvs.on i,.lv-open .lv.ok .lvtag i{background:#b0453a;opacity:1;animation:lvp 1.6s ease-in-out infinite}
+.lvs.off{color:#a5574a}
+@keyframes lvp{0%,100%{box-shadow:0 0 0 0 #b0453a55}50%{box-shadow:0 0 0 4px #b0453a00}}
+.lvi{display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap}
+.lvi em{font-style:normal;color:var(--sub)}
+.lvi b{font:600 17px/1 "Cormorant Garamond",serif;color:var(--text)}
+.lvi i{font-style:normal;font-size:12px}
+.lvhow{margin:6px 4px 0;font-size:12.5px;color:var(--sub)}
+.lvhow{border-top:0}.lvhow summary{cursor:pointer;color:var(--fogdeep);list-style:none;display:inline-flex;padding:2px 4px;font-size:12.5px}.lvhow summary::after{content:none}
+.lvhow summary::-webkit-details-marker{display:none}
+.lvhow summary::before{content:"ⓘ ";}
+.lvhow>div{margin-top:6px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);line-height:1.75;color:var(--text)}
+.lvhow p{margin:0 0 6px}.lvhow b{color:var(--copper)}.lvhow .lvt{color:var(--sub);margin:0}
+.lv{margin:2px 18px 12px;padding:8px 12px;border-radius:12px;background:linear-gradient(90deg,#8ea3b61f,#8ea3b608);border:1px solid #8ea3b633;font-size:12px;color:var(--sub);min-height:20px}
+.lv:not(.ok){color:var(--sub);opacity:.7}
+.lvm{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.lvtag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;letter-spacing:.1em;color:var(--fogdeep);font-weight:500}
+.lvm b{font:600 22px/1 "Cormorant Garamond",serif;color:var(--text)}
+.lvm span:not(.lvtag){font-size:13px}
+.lvx{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:4px}
+.lvx .tm{margin-left:auto;font-variant-numeric:tabular-nums}
+.lvx u{text-decoration:none;color:#fff;border-radius:6px;padding:0 6px;font-size:11.5px}
+.lvx u.good{background:var(--fogdeep)}.lvx u.mid{background:var(--copper)}.lvx u.bad{background:#a5574a}
 </style>
 </head>
 <body>
@@ -301,7 +330,12 @@ ul.src a{color:var(--fogdeep)}
     <div class="upd">UPDATED<br>{{UPDATED}}</div>
   </div>
   {{SUMMARY}}
-  <div class="stripe"></div>
+  <div class="lvbar" id="lvbar" data-kind="tw" data-syms="TWS:TSE01:INDEX|加權,TWS:OTC01:INDEX|櫃買"><div class="lvrow"><span class="lvs"><i></i>載入即時報價…</span></div>
+  <details class="lvhow"><summary>哪些數字是即時的？怎麼算？</summary><div><p><b>即時（開盤時每 10 秒）</b>：每檔卡片上標「即時」的那一行：現價、漲跌、漲跌幅、今天累計成交量（張），以及用現價重算的「距三個月高點」；上面這排的加權、櫃買指數也是。</p>
+<p><b>每天收盤後算一次</b>：分類（可能錯殺、基本面轉弱…）、入手分數、營收、EPS、本益比、法人買賣、成交量分佈、同業比較。這些要用收盤後的完整資料，盤中不會變；卡片右上角的大數字也是收盤價算的。</p>
+<p><b>怎麼算</b>：即時「距三個月高點」＝ 現價 ÷ 近三個月最高收盤價 − 1，三個月高點用昨天收盤後算好的那個。</p>
+<p><b>資料從哪來</b>：鉅亨網的公開報價，你的手機直接向它要，不經過 GitHub。每檔最右邊是那筆成交的時間，跟現在時間比就知道新不新。只更新畫面上看得到的股票（省流量），切到別的 App 會暫停。</p><p class="lvt"></p></div></details></div>
+    <div class="stripe"></div>
 </header>
 <div class="navwrap"><nav>{{NAV}}</nav></div>
 <main><div class="sbox" id="sbox"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="5.2"/><path d="m11 11 3.6 3.6" stroke-linecap="round"/></svg><input id="q" type="search" inputmode="search" autocomplete="off" placeholder="搜尋個股：代號或名稱，例如 2330、台積電" aria-label="搜尋個股"><button class="clr" id="qclr" aria-label="清除">×</button></div><div id="sres"></div>{{BODY}}<p class="foot">每個交易日收盤後更新・篩選結果，不是投資建議</p></main>
@@ -354,5 +388,6 @@ ul.src a{color:var(--fogdeep)}
   top.onclick=function(){window.scrollTo({top:0,behavior:'smooth'})};
 })();
 </script>
+<script src="live.js" defer></script>
 </body>
 </html>
