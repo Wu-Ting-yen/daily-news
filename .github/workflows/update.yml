@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: update-news
@@ -44,6 +45,25 @@ jobs:
           flow = json.load(open("data/foreign/flow.json"))
           sys.exit(0 if d not in daily or (flow.get(d) or {}).get("otc") is None else 1)
           PY
+      - name: 融資資料（有新的一天就重算流動性回測頁）
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          read A B < <(python - <<'PY'
+          import datetime as dt
+          now = dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+          if 9 <= now.hour < 15:
+              print("- -")
+          else:
+              end = now.date() if now.hour >= 15 else now.date() - dt.timedelta(days=1)
+              print((end - dt.timedelta(days=10)).isoformat(), end.isoformat())
+          PY
+          )
+          [ "$A" = "-" ] && { echo "融資：白天不抓"; exit 0; }
+          before=$(cat data/bt/margin/*.json | md5sum)
+          GAP=1.5 python backtest/margin_hist.py "$A" "$B"
+          after=$(cat data/bt/margin/*.json | md5sum)
+          [ "$before" != "$after" ] && echo "BT_RERUN=1" >> "$GITHUB_ENV" || echo "融資：沒有新資料"
       - name: 儲存
         run: |
           git config user.name "news-bot"
@@ -52,3 +72,8 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -qm "更新新聞 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
           for i in 1 2 3; do git push -q && break || git pull -q --rebase; done
+      - name: 有新的融資資料就重算回測頁
+        if: env.BT_RERUN == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run backtest.yml --ref main -R "${{ github.repository }}"
