@@ -36,12 +36,14 @@ jobs:
       - run: python backtest/fetch_market.py
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      - name: 補最近的融資資料
+        run: python backtest/margin_hist.py "$(TZ=Asia/Taipei date -d '-10 days' +%F)" "$(TZ=Asia/Taipei date +%F)"
       - run: ls -la bt_raw && python backtest/run.py && python backtest/page.py
       - name: 儲存
         run: |
           git config user.name "news-bot"
           git config user.email "news-bot@users.noreply.github.com"
-          git add data/bt/result.json data/bt/official.json backtest.html
+          git add data/bt/result.json data/bt/official.json data/bt/margin backtest.html
           git diff --cached --quiet && exit 0
           git commit -m "回測結果 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
           for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; git rebase --abort 2>/dev/null; sleep 5; done
